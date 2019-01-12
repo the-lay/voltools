@@ -1,0 +1,3 @@
+include kernels/*
+include tests/*
+include examples/*
