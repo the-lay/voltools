@@ -86,50 +86,44 @@ extern "C" {
     __global__ void SamplesToCoefficients3DX(
         float* volume,		// in-place processing
         uint pitch,			// width in bytes
-        uint width,			// width of the volume
-        uint height,		// height of the volume
-        uint depth)			// depth of the volume
+        const uint3* shape)
     {
         // process lines in x-direction
         const uint y = blockIdx.x * blockDim.x + threadIdx.x;
         const uint z = blockIdx.y * blockDim.y + threadIdx.y;
-        const uint startIdx = (z * height + y) * pitch;
+        const uint startIdx = (z * shape[0].y + y) * pitch;
 
         float* ptr = (float*)((uchar*)volume + startIdx);
-        ConvertToInterpolationCoefficients(ptr, width, sizeof(float));
+        ConvertToInterpolationCoefficients(ptr, shape[0].x, sizeof(float));
     }
 
     __global__ void SamplesToCoefficients3DY(
         float* volume,		// in-place processing
         uint pitch,			// width in bytes
-        uint width,			// width of the volume
-        uint height,		// height of the volume
-        uint depth)			// depth of the volume
+        const uint3* shape)
     {
         // process lines in y-direction
         const uint x = blockIdx.x * blockDim.x + threadIdx.x;
         const uint z = blockIdx.y * blockDim.y + threadIdx.y;
-        const uint startIdx = z * height * pitch;
+        const uint startIdx = z * shape[0].y * pitch;
 
         float* ptr = (float*)((uchar*)volume + startIdx);
-        ConvertToInterpolationCoefficients(ptr + x, height, pitch);
+        ConvertToInterpolationCoefficients(ptr + x, shape[0].y, pitch);
     }
 
     __global__ void SamplesToCoefficients3DZ(
         float* volume,		// in-place processing
         uint pitch,			// width in bytes
-        uint width,			// width of the volume
-        uint height,		// height of the volume
-        uint depth)			// depth of the volume
+        const uint3* shape)
     {
         // process lines in z-direction
         const uint x = blockIdx.x * blockDim.x + threadIdx.x;
         const uint y = blockIdx.y * blockDim.y + threadIdx.y;
         const uint startIdx = y * pitch;
-        const uint slice = height * pitch;
+        const uint slice = shape[0].y * pitch;
 
         float* ptr = (float*)((uchar*)volume + startIdx);
-        ConvertToInterpolationCoefficients(ptr + x, depth, slice);
+        ConvertToInterpolationCoefficients(ptr + x, shape[0].z, slice);
     }
 
     ///////////////////////////// cubicTex3D.cu
@@ -251,7 +245,7 @@ extern "C" {
             return;
 
         // get interpolated value and put it into destination buffer
-        float v = linearTex3D(coeff_tex, ndx);
+        float v = INTERPOLATION_FETCH(coeff_tex, ndx);
         uint flat_index = vox.x + dims[0].x*vox.y + dims[0].x*dims[0].y*vox.z;
         volume[flat_index] = v;
     }
