@@ -44,11 +44,15 @@ class Volume:
 
     def _init_gpu(self):
         self._kernels_code = Volume._kernels_code.replace('INTERPOLATION_FETCH',
-                                                          'linearTex3D' if self.interpolation == 'linear'
-                                                          else 'cubicTex3DSimple')
+                                                          'linearTex3D' if self.interpolation == 'linear' else
+                                                          'cubicTex3D' if self.interpolation == 'bspline' else
+                                                          'cubicTex3DSimple' if self.interpolation == 'bsplinehq' else
+                                                          'WRONG_INTERPOLATION')
+
         import os
         os.environ['PATH'] += ';' + r'C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin'
         self.cuda = SourceModule(self._kernels_code, no_extern_c=True,
+                                 options=['-O3', '--compiler-options', '-Wall'],
                                   #options=['-O3', '--compiler-options', '-Wall', '-rdc=true', '-lcudadevrt'],
                                  include_dirs=[str(Volume._kernels_folder)])
 
@@ -181,6 +185,8 @@ class Volume:
     def __eq__(self, other):
 
         if not isinstance(other, Volume):
+            # TODO add comparison with numpy ndarray
+            # TODO add comparison with pycuda gpuarray
             return False
 
         if self.shape != other.shape:
