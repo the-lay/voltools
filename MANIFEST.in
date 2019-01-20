@@ -1,3 +1,2 @@
 include voltools/kernels/*
 include tests/*
-include examples/*

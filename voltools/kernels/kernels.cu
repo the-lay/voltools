@@ -220,7 +220,7 @@ extern "C" {
 
     texture<float, 3, cudaReadModeElementType> coeff_tex;
 
-    __global__ void transform(const int4* dims, const float4* xform, float* volume)
+    __global__ void transform(const int4* const dims, const float4* const xform, float* const volume)
     {
         // get voxel coordinates
         // in CUDA arrays X is the fastest changing dimension, so we need to swap x with z

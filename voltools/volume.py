@@ -1,13 +1,11 @@
 import numpy as np
 import time
-from pyrr import Matrix44
-from transforms3d.euler import euler2mat
 from pathlib import Path
 
 from pycuda import driver, compiler, gpuarray
 from pycuda.compiler import SourceModule
 
-from .tools import compute_per_voxel_dims, compute_prefilter_dims, gpuarray_to_texture
+from .tools import *
 
 
 class Volume:
@@ -21,6 +19,10 @@ class Volume:
     ### Initialization
     def __init__(self, data, prefilter=True, interpolation='bspline', cuda_warmup=True):
 
+        # Check data
+        if data.ndim != 3:
+            raise ValueError('Volume class expects a 3-dimensional input.')
+
         # Conversion
         if data.dtype != np.float32:
             data = data.astype(np.float32)
@@ -28,6 +30,7 @@ class Volume:
         # Volume attributes
         self.initial_data = data
         self.shape = data.shape
+        self.size = np.prod(data.shape)
         self.strides = data.strides
         self.dtype = data.dtype
         self.interpolation = interpolation
@@ -41,6 +44,7 @@ class Volume:
         # CUDA "warmup" to avoid first-time run performance dip
         if cuda_warmup:
             self.transform_m(np.identity(4))
+            # assert(self == self)
 
     def _init_gpu(self):
         self._kernels_code = Volume._kernels_code.replace('INTERPOLATION_FETCH',
@@ -49,11 +53,10 @@ class Volume:
                                                           'cubicTex3DSimple' if self.interpolation == 'bsplinehq' else
                                                           'WRONG_INTERPOLATION')
 
-        import os
-        os.environ['PATH'] += ';' + r'C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin'
+        # import os
+        # os.environ['PATH'] += ';' + r'C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin'
         self.cuda = SourceModule(self._kernels_code, no_extern_c=True,
                                  options=['-O3', '--compiler-options', '-Wall'],
-                                  #options=['-O3', '--compiler-options', '-Wall', '-rdc=true', '-lcudadevrt'],
                                  include_dirs=[str(Volume._kernels_folder)])
 
         # functions setup
@@ -142,46 +145,25 @@ class Volume:
 
         return self
 
-    # Order of transformations: scale->rotation->translation
     def transform(self,
                   scale=None,
-                  rotation=None, rotation_units='rad', rotation_order='rzxz',
+                  rotation=None, rotation_units='deg', rotation_order='rzxz',
                   translation=None,
                   around_center=True, profile=False):
 
-        if scale is None:
-            scale = Matrix44.from_scale([1, 1, 1], dtype=np.float32)
-        else:
-            scale = Matrix44.from_scale(scale, dtype=np.float32)
+        # Order: S->R->T or if around_center: PreT->S->R->PostT->T
+        tr_m = get_transform_matrix(dtype=self.dtype,
+                                    scale=scale,
+                                    rotation=rotation,
+                                    rotation_units=rotation_units,
+                                    rotation_order=rotation_order,
+                                    translation=translation,
+                                    around_center=around_center,
+                                    shape=self.shape[::-1]) # shape inverted to match X-Y-Z
 
-        if rotation is None:
-            rotation_m = np.identity(4, dtype=np.float32)
-        else:
-            if rotation_units not in ['deg', 'rad']:
-                raise TypeError('Rotation units should be either \'deg\' or \'rad\'.')
-            if rotation_units == 'deg':
-                rotation = np.deg2rad(rotation)
-            rotation_m = np.identity(4, dtype=np.float32)
-            rotation_m[0:3, 0:3] = euler2mat(*(-1 * rotation), axes=rotation_order)
+        return self.transform_m(tr_m, profile)
 
-        if translation is None:
-            translation = Matrix44.from_translation([0, 0, 0], dtype=np.float32)
-        else:
-            translation = Matrix44.from_translation(translation, dtype=np.float32)
-
-        if around_center:
-            center_point = np.divide(self.shape[::-1], 2)
-            pretrans_m = Matrix44.from_translation(center_point, dtype=np.float32)
-            posttrans_m = Matrix44.from_translation(-1 * center_point, dtype=np.float32)
-
-            transform_m = pretrans_m * scale * rotation_m * posttrans_m * translation
-
-        else:
-            transform_m = scale * rotation_m * translation
-
-        return self.transform_m(transform_m, profile)
-
-    ### Comparison API
+    ### Built-ins API
     def __eq__(self, other):
 
         if not isinstance(other, Volume):
@@ -189,9 +171,32 @@ class Volume:
             # TODO add comparison with pycuda gpuarray
             return False
 
-        if self.shape != other.shape:
+        if (self.shape != other.shape) or (self.size != other.size):
             return False
 
-        # TODO instead of moving data to cpu and comparing here, compare on gpu with a custom kernel
-        return np.allclose(self.d_data.get(), other.d_data.get())
+        krnl = get_equal_sum_kernel(self.dtype, other.dtype)
+        return int(krnl(self.d_data, other.d_data).get()) == self.size
+        # CPU Test
+        # return np.allclose(self.d_data.get(), other.d_data.get())
+
+    ### Custom stuff
+    def project(self):
+        """
+        Sum in 0 axis direction (np.sum(axis=0) on GPU)
+        :return: np.ndarray with projections
+        """
+
+        total_sum = gpuarray.zeros(self.shape[1:], dtype=np.float32)
+
+        for i in range(self.shape[0]):
+            total_sum += self.d_data[i]
+
+        return total_sum.get()
+
+    def sum(self):
+        """
+        Scalar sum of all voxels
+        :return:
+        """
+        return self.dtype.type(gpuarray.sum(self.d_data).get())
 
