@@ -245,7 +245,7 @@ extern "C" {
             return;
 
         // get interpolated value and put it into destination buffer
-        float v = INTERPOLATION_FETCH(coeff_tex, ndx);
+        float v = INTERPOLATION_FETCH(coeff_tex, ndx); // INTERPOLATION_FETCH gets substituted while loading by pycuda
         uint flat_index = vox.x + dims[0].x*vox.y + dims[0].x*dims[0].y*vox.z;
         volume[flat_index] = v;
     }

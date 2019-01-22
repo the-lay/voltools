@@ -140,7 +140,7 @@ class Volume:
 
         if profile:
             driver.Context.synchronize()
-            t_end = time.perf_counter() - t_start
+            t_end = time.perf_counter() - t_start # TODO: use cuda events instead
             print('Transform fininshed in {:.4f} s'.format(t_end))
 
         return self
