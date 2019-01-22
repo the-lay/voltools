@@ -84,15 +84,17 @@ def get_equal_sum_kernel(dtype_a, dtype_b):
 # Creates transformation matrix
 def get_transform_matrix(dtype=np.float32,
                          scale=None,
+                         shear=None,
                          rotation=None, rotation_units='deg', rotation_order='rzxz',
                          translation=None,
                          around_center=False, shape=None):
     """
     Returns composed transformation matrix according to the passed arguments.
-    Transformation order: S->R->T or if around_center: PreT->S->R->PostT->T
+    Transformation order: Sc->Sh->R->T or if around_center: PreT->Sc->Sh->R->PostT->T
 
     :param dtype: numpy.dtype of the matrix
     :param scale: tuple of scale coefficients to each dimension
+    :param shear: tuple of shear coefficients to each dimension
     :param rotation: tuple of angles
     :param rotation_units: str of 'deg' or 'rad'
     :param rotation_order: str of one of 24 axis rotation combinations
@@ -104,7 +106,12 @@ def get_transform_matrix(dtype=np.float32,
 
 
     M = np.identity(4, dtype=dtype)
-    center_point = np.divide(shape, 2)
+
+    if around_center:
+        try:
+            center_point = np.divide(shape, 2)
+        except Exception:
+            raise ValueError('For around_center transformations, shape must be defined.')
 
     # Translation
     if translation is not None:
@@ -129,6 +136,14 @@ def get_transform_matrix(dtype=np.float32,
         R = np.identity(4, dtype=dtype)
         R[0:3, 0:3] = euler2mat(*rotation, axes=rotation_order)
         M = np.dot(M, R)
+
+    # Shear
+    if shear is not None:
+        Z = np.identity(4, dtype=dtype)
+        Z[1, 2] = shear[2]
+        Z[0, 2] = shear[1]
+        Z[0, 1] = shear[0]
+        M = np.dot(M, Z)
 
     # Scale
     if scale is not None:
