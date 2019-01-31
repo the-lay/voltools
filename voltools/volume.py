@@ -229,10 +229,10 @@ class Volume:
 
 
     ### Custom stuff
-    def project(self):
+    def project(self, cpu=True):
         """
         Sum in 0 axis direction (np.sum(axis=0) on GPU)
-        :return: np.ndarray with projections
+        :return: np.ndarray (if CPU) / GPUArray (if not CPU) with projections
         """
 
         total_sum = gpuarray.zeros(self.shape[1:], dtype=np.float32)
@@ -240,7 +240,10 @@ class Volume:
         for i in range(self.shape[0]):
             total_sum += self.d_data[i]
 
-        return total_sum.get()
+        if cpu:
+            return total_sum.get()
+        else:
+            return total_sum
 
     def sum(self):
         """

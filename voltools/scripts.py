@@ -25,7 +25,9 @@ def create_projections(volume, angles: []):
     # Create projections
     projections = np.zeros((len(angles), vol.shape[1], vol.shape[2]), dtype=vol.dtype)
     for i, angle in enumerate(angles):
-        projections[i] = vol.transform(rotation=(angle, 0, 0), rotation_order='rzxz', rotation_units='deg').project()
+        projections[i] = vol.transform(rotation=(angle, 0, 0),
+                                       rotation_order='rzxz',
+                                       rotation_units='deg').project(cpu=True)
 
     # Not sure it's needed, pycuda GC must be smart enough, but just in case cleanup
     if isinstance(volume, np.ndarray):
