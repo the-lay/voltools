@@ -28,6 +28,23 @@ class TestVolume(unittest.TestCase):
         TestVolume.Volume = Volume
         TestVolume.data = np.random.rand(50, 50, 50).astype(np.float32) * 1000
 
+    def test_equality(self):
+        v = TestVolume.Volume(TestVolume.data, interpolation='linear')
+        v2 = TestVolume.Volume(TestVolume.data * 2, interpolation='linear')
+
+        self.assertTrue(v == v)
+        self.assertFalse(v == v2)
+
+        self.assertTrue(np.allclose((v+v).get(), v2.to_cpu()))
+
+    def test_addition(self):
+        v = TestVolume.Volume(TestVolume.data, interpolation='linear')
+        self.assertTrue(np.allclose(TestVolume.data * 2, (v + v).get()))
+
+    def test_substract(self):
+        v = TestVolume.Volume(TestVolume.data, interpolation='linear')
+        self.assertTrue(np.allclose(np.zeros_like(TestVolume.data), (v - v).get()))
+
     def test_create_linear(self):
         v = TestVolume.Volume(TestVolume.data, interpolation='linear')
         self.assertTrue(np.allclose(TestVolume.data, v.initial_data))

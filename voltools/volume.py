@@ -44,7 +44,8 @@ class Volume:
         # CUDA "warmup" to avoid first-time run performance dip
         if cuda_warmup:
             self.transform_m(np.identity(4))
-            # assert(self == self)
+            assert(self == self)
+            assert(self + self)
 
     def _init_gpu(self):
         self._kernels_code = Volume._kernels_code.replace('INTERPOLATION_FETCH',
@@ -175,9 +176,57 @@ class Volume:
             return False
 
         krnl = get_equal_sum_kernel(self.dtype, other.dtype)
+        # krnl(A.d_data, B.d_data).get() will return a number of "true"s for elementwise comparison
+        # now we check if the number of true comparisons is the same as number of voxels
         return int(krnl(self.d_data, other.d_data).get()) == self.size
-        # CPU Test
-        # return np.allclose(self.d_data.get(), other.d_data.get())
+
+    def __add__(self, other):
+        """
+        Returns elementwise addition of two volumes. Volumes must be of same shape, size and dtype
+        :param other: Volume or gpuarray.GPUArray
+        :return: gpuarray.GPUArray
+        """
+
+        if isinstance(other, Volume):
+
+            if (self.shape != other.shape) or (self.size != other.size) or (self.dtype != other.dtype):
+                raise ValueError('Shape, size and dtype of the volumes should match.')
+
+            return self.d_data + other.d_data
+
+        elif isinstance(other, gpuarray.GPUArray):
+
+            if (self.shape != other.shape) or (self.size != other.size) or (self.dtype != other.dtype):
+                raise ValueError('Shape, size and dtype of the Volume and GPUArray should match.')
+
+            return self.d_data + other
+
+        else:
+            raise NotImplementedError('Addition is currently supported only with another Volume or GPUArray')
+
+    def __sub__(self, other):
+        """
+        Returns elementwise substraction of two volumes. Volumes must be of same shape, size and dtype
+        :param other: Volume or gpuarray.GPUArray
+        :return: gpuarray.GPUArray
+        """
+
+        if isinstance(other, Volume):
+            if (self.shape != other.shape) or (self.size != other.size) or (self.dtype != other.dtype):
+                raise ValueError('Shape, size and dtype of the volumes should match.')
+
+            return self.d_data - other.d_data
+
+        elif isinstance(other, gpuarray.GPUArray):
+
+            if (self.shape != other.shape) or (self.size != other.size) or (self.dtype != other.dtype):
+                raise ValueError('Shape, size and dtype of the Volume and GPUArray should match.')
+
+            return self.d_data - other
+
+        else:
+            raise NotImplementedError('Substraction is currently supported only with another Volume or GPUArray')
+
 
     ### Custom stuff
     def project(self):
