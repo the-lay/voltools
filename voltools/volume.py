@@ -23,6 +23,13 @@ class Volume:
         if data.ndim != 3:
             raise ValueError('Volume class expects a 3-dimensional input.')
 
+        # Check data size
+        if data.nbytes * 2 >= driver.Context.get_device().total_memory():
+            raise ValueError('Volume is definitely too big for the GPU.'
+                             'Need {} GB (twice as much than on CPU) for this volume, but GPU has {} GB.'.format(
+                (data.nbytes * 2) / (1000**3),
+                driver.Context.get_device().total_memory() / (1000**3)))
+
         # Conversion
         if data.dtype != np.float32:
             data = data.astype(np.float32)
@@ -44,8 +51,10 @@ class Volume:
         # CUDA "warmup" to avoid first-time run performance dip
         if cuda_warmup:
             self.transform_m(np.identity(4))
-            assert(self == self)
-            assert(self + self)
+            warmup_1 = self == self
+            warmup_2 = self + self
+
+            del warmup_1, warmup_2
 
     def _init_gpu(self):
         self._kernels_code = Volume._kernels_code.replace('INTERPOLATION_FETCH',

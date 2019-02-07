@@ -1,7 +1,7 @@
 import numpy as np
 from .volume import Volume
 
-def create_projections(volume, angles: []):
+def create_projections(volume, angles: []):#, interpolation='bsplinehq'):
     """
     Creates projections according to the angles list
     Example:
@@ -11,12 +11,14 @@ def create_projections(volume, angles: []):
 
     :param volume: numpy.ndarray with 3D data or Volume
     :param angles: list of angles
+    # :param interpolation: volume interpolation mode, used only if passed data was numpy.ndarray
     :return: list of projections matching the input angles list
     """
 
     # Create volume or use existing volume
     if isinstance(volume, np.ndarray):
         vol = Volume(volume, interpolation='bsplinehq', prefilter=True, cuda_warmup=True)
+        #vol = Volume(volume, interpolation=interpolation, prefilter=True, cuda_warmup=True)
     elif isinstance(volume, Volume):
         vol = volume
     else:
@@ -25,9 +27,10 @@ def create_projections(volume, angles: []):
     # Create projections
     projections = np.zeros((len(angles), vol.shape[1], vol.shape[2]), dtype=vol.dtype)
     for i, angle in enumerate(angles):
-        projections[i] = vol.transform(rotation=(angle, 0, 0),
-                                       rotation_order='rzxz',
-                                       rotation_units='deg').project(cpu=True)
+        projections[i] = vol.transform(rotation=(0, 0, angle),
+                                       rotation_order='szyx',
+                                       rotation_units='deg',
+                                       around_center=True).project(cpu=True)
 
     # Not sure it's needed, pycuda GC must be smart enough, but just in case cleanup
     if isinstance(volume, np.ndarray):
