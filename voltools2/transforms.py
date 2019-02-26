@@ -162,6 +162,8 @@ def affine(data, transform_m, mode='', interpolation=''):
     __validate_transform_m(transform_m)
 
     # TODO: for numpy array create a short lived volume
+    if isinstance(data, np.ndarray):
+        # TODO
 
     # TODO: call kernels
 
