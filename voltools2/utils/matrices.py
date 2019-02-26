@@ -15,25 +15,27 @@ _AXES2TUPLE = {
     'rzxz': (2, 0, 1, 1), 'rxyz': (2, 1, 0, 1), 'rzyz': (2, 1, 1, 1)}
 _TUPLE2AXES = dict((v, k) for k, v in _AXES2TUPLE.items())
 
+
 # Matrix methods
 def translation_matrix(translation, dtype=np.float32):
     """
     Returns translation matrix for the specified translation.
     :param translation: tuple or np.ndarray of translation
-    :param dtype:
+    :param dtype: np.dtype
     :return:
     """
     m = np.identity(4, dtype=dtype)
     m[3, :3] = translation[:3]
     return m
 
+
 def rotation_matrix(rotation, rotation_units='deg', rotation_order='rzxz', dtype=np.float32):
     """
     Returns rotation matrix for the specified rotation.
-    :param rotation: typle or np.ndarray with three rotational values
+    :param rotation: tuple, np.ndarray with three rotational values
     :param rotation_units: 'deg' or 'rad'
-    :param rotation_order: one of 24 defined rotationa
-    :param dtype:
+    :param rotation_order: one of 24 defined rotations
+    :param dtype: np.dtype
     :return:
     """
     # Validation
@@ -92,11 +94,12 @@ def rotation_matrix(rotation, rotation_units='deg', rotation_order='rzxz', dtype
 
     return m
 
+
 def shear_matrix(coefficients, dtype=np.float32):
     """
     Returns shear matrix for the specified shear coefficients.
-    :param coefficients: tuple or np.ndarray
-    :param dtype:
+    :param coefficients: tuple, np.ndarray
+    :param dtype: np.dtype
     :return:
     """
     m = np.identity(4, dtype)
@@ -105,11 +108,12 @@ def shear_matrix(coefficients, dtype=np.float32):
     m[0, 1] = coefficients[0]
     return m
 
+
 def scale_matrix(coefficients, dtype=np.float32):
     """
     Returns scale matrix for the specified scale coefficients.
-    :param coefficients: tuple or np.ndarray
-    :param dtype:
+    :param coefficients: tuple, np.ndarray
+    :param dtype: np.dtype
     :return:
     """
     m = np.identity(4, dtype)

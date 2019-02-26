@@ -7,6 +7,7 @@ from pycuda.compiler import SourceModule
 # from .transforms import
 from utils.kernels import get_volume_kernel, fits_on_gpu, get_transform_kernel
 
+
 class Volume:
 
     def __init__(self, data):
@@ -42,11 +43,11 @@ class Volume:
 
 
 # development
-d = np.random.rand(500, 500, 500)
-a = Volume(d)
-b = get_transform_kernel(a.dtype)
-
-print('pause')
+# d = np.random.rand(500, 500, 500)
+# a = Volume(d)
+# b = get_transform_kernel(a.dtype)
+#
+# print('pause')
 
 
 

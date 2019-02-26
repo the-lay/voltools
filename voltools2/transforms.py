@@ -1,8 +1,9 @@
 import numpy as np
-from .volume import Volume
+from volume import Volume
 
-from .utils.matrices import scale_matrix, shear_matrix, rotation_matrix, translation_matrix
-
+from utils.matrices import scale_matrix, shear_matrix, rotation_matrix, translation_matrix
+from utils.kernels import get_transform_kernel, gpuarray_to_texture
+from pycuda import gpuarray as gu
 
 def rotate(data,
            rotation,
@@ -158,16 +159,30 @@ def transform(data,
 def affine(data, transform_m, mode='', interpolation=''):
 
     # Validate inputs
-    __validate_border_interpolation(mode, interpolation)
+    # __validate_border_interpolation(mode, interpolation)
     __validate_transform_m(transform_m)
 
-    # TODO: for numpy array create a short lived volume
-    if isinstance(data, np.ndarray):
-        # TODO
+    # # TODO: for numpy array create a short lived volume
+    # if isinstance(data, np.ndarray):
+    #     # TODO
 
-    # TODO: call kernels
+    # get kernel
+    affine_transform = get_transform_kernel(data.dtype)
 
-    pass
+    # populate texture with current data
+    tex = affine_transform.get_texref('coeff_tex')
+    d_data = gu.to_gpu(data)
+    gpuarray_to_texture(d_data, tex)
+
+    # upload other affine transform arguments
+    d_shape = gu.to_gpu(np.array(data.shape[::-1], dtype=np.int32))
+    transform_m = gu.to_gpu(transform_m)
+    d_data.fill(0)
+
+    # call method and return the result
+    affine_transform(d_shape, transform_m, d_data)
+
+    return d_data
 
 
 def __validate_border_interpolation(border, interpolation):
@@ -215,3 +230,24 @@ def __validate_input_data(data):
 
     if isinstance(data, np.ndarray) and data.ndim != 3:
         raise ValueError('Data must have 3 dimensions')
+
+
+### DEVELOPMENT
+import matplotlib.pyplot as plt
+plt.ion()
+
+from pycuda import autoinit as __c
+
+print('voltools uses CUDA on {} with {}.{} CC.'.format(__c.device.name(), *__c.device.compute_capability()))
+
+d = np.random.rand(500, 500, 500).astype(np.float32)
+plt.imshow(d[250])
+plt.show()
+
+tm = translation_matrix((250, 250, 250))
+d_mod = affine(d, tm).get()
+plt.imshow(d_mod[250])
+plt.show()
+
+print('pause')
+
