@@ -1,9 +1,11 @@
 import numpy as np
-from volume import Volume
+from pycuda import autoinit
+#from volume import Volume
 
 from utils.matrices import scale_matrix, shear_matrix, rotation_matrix, translation_matrix
 from utils.kernels import get_transform_kernel, gpuarray_to_texture
 from pycuda import gpuarray as gu
+from pycuda import driver
 
 def rotate(data,
            rotation,
@@ -37,7 +39,7 @@ def rotate(data,
 
     pret_m = translation_matrix(center)
     rot_m = rotation_matrix(rotation, rotation_units=rotation_units, rotation_order=rotation_order)
-    post_m = translation_matrix(-1 * center)
+    post_m = translation_matrix([-1 * x for x in center])
 
     transform_m = np.dot(post_m, np.dot(rot_m, pret_m))
 
@@ -115,8 +117,6 @@ def transform(data,
     :return:
     """
 
-    __validate_input_data(data)
-
     if center is None:
         center = tuple([shape // 2 for shape in data.shape])
     elif len(center) != 3:
@@ -130,7 +130,7 @@ def transform(data,
         transform_m = np.dot(transform_m, translation_matrix(translation))
 
     # Post-translation
-    transform_m = np.dot(transform_m, translation_matrix(-1 * center))
+    transform_m = np.dot(transform_m, translation_matrix([-1 * x for x in center]))
 
     # Rotation
     if rotation is not None:
@@ -156,33 +156,40 @@ def transform(data,
 
 
 # generic method for any transformation from given transform_m
+# tex = None
+# affine_transform = None
+# d_data = None
 def affine(data, transform_m, mode='', interpolation=''):
 
     # Validate inputs
     # __validate_border_interpolation(mode, interpolation)
     __validate_transform_m(transform_m)
 
-    # # TODO: for numpy array create a short lived volume
-    # if isinstance(data, np.ndarray):
-    #     # TODO
+    if isinstance(data, np.ndarray):
+        # get kernel and texture
+        kernel, texture = get_transform_kernel(data.dtype)
 
-    # get kernel
-    affine_transform = get_transform_kernel(data.dtype)
+        # populate texture
+        d_data = gu.to_gpu(data)
+        gpuarray_to_texture(d_data, texture)
 
-    # populate texture with current data
-    tex = affine_transform.get_texref('coeff_tex')
-    d_data = gu.to_gpu(data)
-    gpuarray_to_texture(d_data, tex)
+        driver.Context.synchronize()
 
-    # upload other affine transform arguments
-    d_shape = gu.to_gpu(np.array(data.shape[::-1], dtype=np.int32))
-    transform_m = gu.to_gpu(transform_m)
-    d_data.fill(0)
+        # populate affine transform arguments
+        d_shape = gu.to_gpu(np.array(data.shape[::-1], dtype=np.int32))
+        transform_m_t = transform_m.transpose().copy()
+        d_transform = gu.to_gpu(transform_m_t)
+        d_data.fill(0)
 
-    # call method and return the result
-    affine_transform(d_shape, transform_m, d_data)
+        # call kernel
+        kernel(d_data, d_shape, d_transform)
+        result = d_data.get()
 
-    return d_data
+        d_shape.gpudata.free()
+        d_transform.gpudata.free()
+        d_data.gpudata.free()
+
+        return result
 
 
 def __validate_border_interpolation(border, interpolation):
@@ -236,18 +243,26 @@ def __validate_input_data(data):
 import matplotlib.pyplot as plt
 plt.ion()
 
-from pycuda import autoinit as __c
-
-print('voltools uses CUDA on {} with {}.{} CC.'.format(__c.device.name(), *__c.device.compute_capability()))
-
-d = np.random.rand(500, 500, 500).astype(np.float32)
-plt.imshow(d[250])
+d = np.random.rand(157, 197, 271).astype(np.float32) * 1000
+d = np.arange(0, 157 * 197 * 271, dtype=np.float32).reshape((157, 197, 271))
+plt.imshow(d[0])
 plt.show()
 
-tm = translation_matrix((250, 250, 250))
-d_mod = affine(d, tm).get()
-plt.imshow(d_mod[250])
+rot_d = transform(d, rotation=(1, 0, 0))
+# rot_d = affine(d, np.identity(4, dtype=np.float32))
+driver.Context.synchronize()
+plt.imshow(rot_d[0])
 plt.show()
 
-print('pause')
+rot_d = transform(d, rotation=(5, 0, 0))
+driver.Context.synchronize()
+plt.imshow(rot_d[0])
+plt.show()
 
+rot_d = affine(d, np.identity(4, dtype=np.float32))
+driver.Context.synchronize()
+plt.imshow(rot_d[0])
+plt.show()
+
+# print(np.allclose(d, rot_d))
+print('stop hammer time')
