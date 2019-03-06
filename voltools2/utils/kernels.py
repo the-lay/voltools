@@ -24,7 +24,7 @@ for kernel in _kernels:
 
 # OOM naive checks
 def fits_on_gpu(nbytes):
-    return nbytes < driver.Context.get_device().total_memory()
+    return nbytes < driver.Context().get_device().total_memory()
 
 
 # Volume kernels
@@ -90,67 +90,54 @@ class VoltoolsElementwiseKernel:
             else:
                 invocation_args.append(arg)
 
+        # using gpuarray computed block/grid for grid-stride patterns
         block = args[0]._block
         grid = args[0]._grid
         invocation_args.append(args[0].mem_size)
 
-        print('Calling kernel', self.name, 'with block', block, 'and grid', grid)
-
-        self.func.prepared_call(grid, block, *invocation_args)
+        if kwargs.get('profile', False):
+            print('Calling kernel', self.name, 'with block', block, 'and grid', grid)
+            timing = self.func.prepared_timed_call(grid, block, *invocation_args)
+            print('Kernel {} took {:.4f} seconds ({:.2f}ms) to execute'.format(self.name, timing(), timing() * 1000))
+        else:
+            self.func.prepared_call(grid, block, *invocation_args)
 
 
 # Affine transform kernel
 @context_dependent_memoize
-def get_transform_kernel(dtype):
+def get_transform_kernel(dtype, interpolation):
 
     kernel = VoltoolsElementwiseKernel(
         args='{}* const volume, const int4* const dims, const float4* const xform'
              .format(dtype_to_ctype(dtype)),
 
         preamble="""
-}}
-// helper_math should be added without C extern
-#include "helper_math.h"
-extern "C" {{
-texture<{}, 3, cudaReadModeElementType> coeff_tex;
+            }} // helper_math should be added without C extern
+            #include "helper_math.h"
+            #include "helper_indexing.h"
+            extern "C" {{
+            texture<{}, 3, cudaReadModeElementType> coeff_tex;
         """.format(dtype_to_ctype(dtype)),
 
         body="""
-        //printf("%llu, %u, %u, %u, %u, %u \t\t", n, tid, total_threads, cta_start, i);
-        
-          // indices
-          int a = i / (dims[0].y * dims[0].z);
-          int b = (i % (dims[0].y * dims[0].z)) / dims[0].z;
-          int c = (i % (dims[0].y * dims[0].z)) % dims[0].z;
-                    
-          //printf("%f %f %f %f \t %f %f %f %f \t %f %f %f %f \t %f %f %f %f \t\t\t",
-          //xform[0].x, xform[0].y, xform[0].z, xform[0].w,
-          //xform[1].x, xform[1].y, xform[1].z, xform[1].w, 
-          //xform[2].x, xform[2].y, xform[2].z, xform[2].w,
-          //xform[3].x, xform[3].y, xform[3].z, xform[3].w);
-          
-          // thread idx to texels
-          float4 voxf = make_float4(((float)c) + .5f, ((float)b) + .5f, ((float)a) + .5f, 1.0f);
-          
-          // apply matrix
-          float4 ndx;
-          ndx.x = dot(voxf, xform[0]);
-          ndx.y = dot(voxf, xform[1]);
-          ndx.z = dot(voxf, xform[2]);
-          //ndx.w = dot(voxf, xform[3]);
-          
-          //printf("(%i, %i, %i) got converted into (%i, %i, %i)", 
-          
-          // skip if transformed voxel is now outside of volume
-          if (ndx.x < 0 || ndx.y < 0 || ndx.z < 0 || ndx.x >= dims[0].x || ndx.y >= dims[0].y || ndx.z >= dims[0].z) {
-            //printf("WOOOOOOT");
-            return;
-          }
-          
-          // get interpolated value
-          float v = tex3D(coeff_tex, ndx.x, ndx.y, ndx.z);
-          volume[i] = v;
-        """,
+            // indices
+            int x = get_x_idx(i, dims);
+            int y = get_y_idx(i, dims);
+            int z = get_z_idx(i, dims);
+            
+            // thread idx to texels (adding + .5f to be in the center of texel)
+            float4 voxf = make_float4(((float)x) + .5f, ((float)y) + .5f, ((float)z) + .5f, 1.0f);
+            
+            // apply matrix
+            float4 ndx;
+            ndx.x = dot(voxf, xform[0]);
+            ndx.y = dot(voxf, xform[1]);
+            ndx.z = dot(voxf, xform[2]);
+            
+            // get interpolated value
+            float v = tex3D(coeff_tex, ndx.x, ndx.y, ndx.z);
+            volume[i] = v;
+        """.format(), # TODO interpolation
 
         name='transform3d',
         include_dirs=[str(_kernels_folder)],
@@ -165,66 +152,6 @@ texture<{}, 3, cudaReadModeElementType> coeff_tex;
     texture.set_flags(driver.TRSF_READ_AS_INTEGER)
 
     return kernel, texture
-
-    #
-    # # For 3D shapes, the subscripts of the element `data[a, b, c]` where
-    # # `data.shape == (A, B, C)` can be computed as
-    # # `a = i/(B*C)`
-    # # `b = mod(i, B*C)/C`
-    # # `c = mod(mod(i, B*C), C)`.
-    #
-    # preamble = """
-    # //}}
-    # //#include "helper_math.h"
-    # //extern "C" {{
-    # texture<{}, 3, cudaReadModeElementType> coeff_tex;
-    # """.format(dtype_to_ctype(dtype))
-    # operation = """
-    # // indices
-    # int a = i / (500 * 500);
-    # int b = (i % (500 * 500)) / 500;
-    # int c = (i % (500 * 500)) % 500;
-    #
-    # //float3 voxf = make_float3(a, b, c);
-    #
-    # // texture memory is reversed
-    # float v = tex3D(coeff_tex, ((float)c) +.5f, ((float)b) +.5f, ((float)a) +.5f);
-    # volume[i] = v;
-    #
-    # //printf("%i (%i, %i, %i) = %f\t", i, a, b, c, v);"""
-    # name = 'transform3d'
-    #
-    # mod = get_elwise_module(args, operation, name, True, options, preamble=preamble)
-    # func = mod.get_function(name)
-    # tex_src = mod.get_texref('coeff_tex')
-    # func.prepare('P'+np.dtype(np.uintp).char)#, texrefs=[tex_src])
-    # return func, tex_src
-
-#     return ElementwiseKernel(
-#         arguments='{}* const volume, const int4* const dims, const float4* const xform'.format(dtype_to_ctype(dtype)),
-#         preamble="""
-# //}}
-# //#include "helper_math.h"
-# //extern "C" {{
-# texture<{}, 3, cudaReadModeElementType> coeff_tex;
-# """.format(dtype_to_ctype(dtype)),
-#         operation="""
-# // indices
-# int a = i / (dims[0].y * dims[0].z);
-# int b = (i % (dims[0].y * dims[0].z)) / dims[0].z;
-# int c = (i % (dims[0].y * dims[0].z)) % dims[0].z;
-#
-# //float3 voxf = make_float3(a, b, c);
-#
-# float v = tex3D(coeff_tex, a, b, c);
-# volume[i] = v;
-#
-# //printf("%i (%i, %i, %i) = %f\t", i, a, b, c, v);
-#         """,
-#         name="transform3d",
-#         keep=True,
-#         options=options
-#     )
 
 
 # Allocates pitched memory and copies from linear d_array, and then sets texture to that memory
@@ -254,11 +181,11 @@ def gpuarray_to_texture(d_array, texture):
     return ary
 
 
-def get_prefilter_kernel(dtype):
-
-    ctype = dtype_to_ctype(dtype)
-    if ctype != 'float':
-        # TODO
-        raise ValueError('Only float arrays can be prefiltered for bspline interpolation')
+# def get_prefilter_kernel(dtype):
+#
+#     ctype = dtype_to_ctype(dtype)
+#     if ctype != 'float':
+#         # TODO
+#         raise ValueError('Only float arrays can be prefiltered for bspline interpolation')
 
 

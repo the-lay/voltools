@@ -12,9 +12,7 @@ def rotate(data,
            rotation_units='deg',
            rotation_order='rzxz',
            center=None,
-           borders='',
-           interpolation=''
-           ):
+           interpolation=''):
     """
 
     :param data:
@@ -24,7 +22,6 @@ def rotate(data,
     :param rotation_units:
     :param rotation_order:
     :param center:
-    :param borders:
     :param interpolation:
     :return:
     """
@@ -43,14 +40,12 @@ def rotate(data,
 
     transform_m = np.dot(post_m, np.dot(rot_m, pret_m))
 
-    return affine(data, transform_m, mode=borders, interpolation=interpolation)
+    return affine(data, transform_m, interpolation=interpolation)
 
 
 def scale(data,
           scale_coefficients=(1, 1, 1),
-          borders='',
-          interpolation=''
-          ):
+          interpolation=''):
 
     __validate_input_data(data)
 
@@ -60,37 +55,29 @@ def scale(data,
 
     transform_m = scale_matrix(scale_coefficients)
 
-    return affine(data, transform_m, mode=borders, interpolation=interpolation)
+    return affine(data, transform_m, interpolation=interpolation)
 
 
 def shear(data,
           shear_coefficients=(1, 1, 1),
-          borders='',
-          interpolation=''
-          ):
+          interpolation='linear'):
 
-    __validate_input_data(data)
-
-    # Uniform shearing
+    # In case uniform shearing was intended
     if isinstance(shear_coefficients, int):
         shear_coefficients = (shear_coefficients, shear_coefficients, shear_coefficients)
 
     transform_m = shear_matrix(shear_coefficients)
 
-    return affine(data, transform_m, mode=borders, interpolation=interpolation)
+    return affine(data, transform_m, interpolation=interpolation)
 
 
 def translate(data,
               translation=(0, 0, 0),
-              borders='',
-              interpolation=''
-              ):
-
-    __validate_input_data(data)
+              interpolation='linear'):
 
     transform_m = translation_matrix(translation)
 
-    return affine(data, transform_m, mode=borders, interpolation=interpolation)
+    return affine(data, transform_m, interpolation=interpolation)
 
 
 def transform(data,
@@ -99,7 +86,8 @@ def transform(data,
               rotation=None, rotation_units='deg', rotation_order='rzxz',
               translation=None,
               center=None,
-              borders='', interpolation=''):
+              interpolation='linear',
+              profile=False):
     """
     A generic routine for multiple transformations.
     Order: PreTrans -> Scale -> Shear -> Rotate -> PostTrans -> Trans
@@ -112,13 +100,13 @@ def transform(data,
     :param rotation_order:
     :param translation:
     :param center:
-    :param borders:
     :param interpolation:
+    :param profile:
     :return:
     """
 
     if center is None:
-        center = tuple([shape // 2 for shape in data.shape])
+        center = tuple([shape // 2 for shape in data.shape[::-1]])
     elif len(center) != 3:
         raise ValueError('Center argument must be a tuple or np.ndarray with length of 3')
 
@@ -152,39 +140,38 @@ def transform(data,
     # Homogeneous matrix
     transform_m /= transform_m[3, 3]
 
-    return affine(data, transform_m, mode=borders, interpolation=interpolation)
+    # Call the affine transformation routine with constructed matrix
+    return affine(data, transform_m, interpolation=interpolation, profile=profile)
 
 
 # generic method for any transformation from given transform_m
-# tex = None
-# affine_transform = None
-# d_data = None
-def affine(data, transform_m, mode='', interpolation=''):
+def affine(data, transform_m, profile=False, interpolation='linear'):
 
     # Validate inputs
-    # __validate_border_interpolation(mode, interpolation)
     __validate_transform_m(transform_m)
+    # __validate_input_data(data)
 
     if isinstance(data, np.ndarray):
         # get kernel and texture
-        kernel, texture = get_transform_kernel(data.dtype)
+        kernel, texture = get_transform_kernel(data.dtype, interpolation)
 
         # populate texture
         d_data = gu.to_gpu(data)
         gpuarray_to_texture(d_data, texture)
 
-        driver.Context.synchronize()
-
         # populate affine transform arguments
-        d_shape = gu.to_gpu(np.array(data.shape[::-1], dtype=np.int32))
+        d_shape = gu.to_gpu(np.array(data.shape, dtype=np.int32))
         transform_m_t = transform_m.transpose().copy()
         d_transform = gu.to_gpu(transform_m_t)
         d_data.fill(0)
 
         # call kernel
-        kernel(d_data, d_shape, d_transform)
+        kernel(d_data, d_shape, d_transform, profile=profile)
+
+        # get data back
         result = d_data.get()
 
+        # free up data
         d_shape.gpudata.free()
         d_transform.gpudata.free()
         d_data.gpudata.free()
@@ -230,6 +217,7 @@ def __validate_input_data(data):
     Validates input data
     :param data: np.ndarray, Volume
     :return: None
+    :raises: ValueError
     """
 
     if not isinstance(data, np.ndarray) or not isinstance(data, Volume):
@@ -243,26 +231,40 @@ def __validate_input_data(data):
 import matplotlib.pyplot as plt
 plt.ion()
 
-d = np.random.rand(157, 197, 271).astype(np.float32) * 1000
-d = np.arange(0, 157 * 197 * 271, dtype=np.float32).reshape((157, 197, 271))
+d = np.random.rand(280, 920, 920).astype(np.float32) * 1000
+# d = np.arange(0, 157 * 197 * 271, dtype=np.float32).reshape((157, 197, 271))
 plt.imshow(d[0])
 plt.show()
 
-rot_d = transform(d, rotation=(1, 0, 0))
+rot_d = transform(d, rotation=(1, 0, 0), rotation_order='rzxz', profile=True)
 # rot_d = affine(d, np.identity(4, dtype=np.float32))
-driver.Context.synchronize()
-plt.imshow(rot_d[0])
+plt.imshow(rot_d[0], vmin=d[0].min(), vmax=d[0].max())
 plt.show()
 
-rot_d = transform(d, rotation=(5, 0, 0))
-driver.Context.synchronize()
-plt.imshow(rot_d[0])
+rot_d = transform(d, rotation=(5, 0, 0), rotation_order='rzxz', profile=True)
+plt.imshow(rot_d[0], vmin=d[0].min(), vmax=d[0].max())
 plt.show()
 
-rot_d = affine(d, np.identity(4, dtype=np.float32))
-driver.Context.synchronize()
-plt.imshow(rot_d[0])
+rot_d = transform(d, rotation=(15, 0, 0), rotation_order='rzxz', profile=True)
+plt.imshow(rot_d[0], vmin=d[0].min(), vmax=d[0].max())
 plt.show()
+
+rot_d = transform(d, rotation=(25, 0, 0), rotation_order='rzxz', profile=True)
+plt.imshow(rot_d[0], vmin=d[0].min(), vmax=d[0].max())
+plt.show()
+
+rot_d = transform(d, rotation=(35, 0, 0), rotation_order='rzxz', profile=True)
+plt.imshow(rot_d[0], vmin=d[0].min(), vmax=d[0].max())
+plt.show()
+
+rot_d = transform(d, rotation=(45, 0, 0), rotation_order='rzxz', profile=True)
+plt.imshow(rot_d[0], vmin=d[0].min(), vmax=d[0].max())
+plt.show()
+
+# rot_d = affine(d, np.identity(4, dtype=np.float32))
+# driver.Context.synchronize()
+# plt.imshow(rot_d[0], vmin=d[0].min(), vmax=d[0].max())
+# plt.show()
 
 # print(np.allclose(d, rot_d))
 print('stop hammer time')
