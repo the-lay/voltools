@@ -4,13 +4,13 @@ from pycuda import gpuarray as gu
 from pycuda import driver
 from pycuda.compiler import SourceModule
 
-# from .transforms import
+# from transforms import
 from utils.kernels import get_volume_kernel, fits_on_gpu, get_transform_kernel
 
 
 class Volume:
 
-    def __init__(self, data):
+    def __init__(self, data, prefilter=False):
 
         # Validation
         if not (isinstance(data, np.ndarray) and data.ndim == 3):
@@ -28,17 +28,19 @@ class Volume:
         self.nbytes = data.nbytes
         self.strides = data.strides
         self.dtype = data.dtype
+        self.prefiltered = False
 
         # GPU
         self._kernel = get_volume_kernel(self.dtype)
-        self.shape_d = gu.to_gpu(np.array(self.shape[::-1], dtype=np.int32))
+        self.shape_d = gu.to_gpu(np.array(self.shape, dtype=np.int32))
         self.data_d = gu.to_gpu(data)
 
-#
-# class ProjectingVolume(Volume):
-#
-#     def __init__(self, data):
-#         super(ProjectingVolume, self).__init__(data)
+        if prefilter:
+            self.prefilter()
+
+    def prefilter(self):
+        self.prefiltered = True
+
 
 
 

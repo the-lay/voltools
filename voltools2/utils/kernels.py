@@ -28,6 +28,7 @@ def fits_on_gpu(nbytes):
 
 
 # Volume kernels
+@context_dependent_memoize
 def get_volume_kernel(dtype):
 
     # Load template and replace
