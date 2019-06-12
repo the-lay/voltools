@@ -3,52 +3,25 @@ from pathlib import Path
 from string import Template
 import os
 
-from pycuda import autoinit as __c
+from pycuda import autoinit as __cuda
 from pycuda import driver, compiler, gpuarray
 from pycuda.compiler import SourceModule
 from pycuda.tools import dtype_to_ctype, context_dependent_memoize, parse_c_arg
 from pycuda.reduction import ReductionKernel
 from pycuda.elementwise import ElementwiseKernel, get_elwise_module, VectorArg, ScalarArg
 
-
 # Load all kernels on init
-_kernels = {
-    'volume.cu': '',
-    'prefilter.cu': ''
-}
+_kernels = {}
 _kernels_folder = Path(__file__).resolve().parent.parent / 'kernels'
-for kernel in _kernels:
-    with (_kernels_folder / kernel).open('r') as f:
-        _kernels[kernel] = f.read()
-
+for kernel in [x for x in _kernels_folder.glob('**/*') if x.suffix == '.cu']:
+    with kernel.open('r') as f:
+        _kernels[kernel.name] = f.read()
 
 # OOM naive checks
 def fits_on_gpu(nbytes):
-    return nbytes < driver.Context().get_device().total_memory()
+    return nbytes < __cuda.device.total_memory(), __cuda.device.total_memory()
 
-
-# Volume kernels
-@context_dependent_memoize
-def get_volume_kernel(dtype):
-
-    # Load template and replace
-    code = _kernels['volume.cu']
-    code = code.replace('DTYPE', dtype_to_ctype(dtype))
-
-    # Compile
-    kernel = SourceModule(code, no_extern_c=True, options=['-O3', '--compiler-options', '-Wall'],
-                          include_dirs=[str(_kernels_folder)])
-
-    # Texture params
-    kernel.texture = kernel.get_texref('data_tex')
-    kernel.texture.set_filter_mode(driver.filter_mode.LINEAR)
-    kernel.texture.set_address_mode(0, driver.address_mode.BORDER)
-    kernel.texture.set_address_mode(1, driver.address_mode.BORDER)
-    kernel.texture.set_address_mode(2, driver.address_mode.BORDER)
-
-    return kernel
-
-
+# Elementwise kernel
 class VoltoolsElementwiseKernel:
 
     def __init__(self, args, preamble, body, name, include_dirs, keep=True):
@@ -103,10 +76,9 @@ class VoltoolsElementwiseKernel:
         else:
             self.func.prepared_call(grid, block, *invocation_args)
 
-
-# Affine transform kernel
-@context_dependent_memoize
-def get_transform_kernel(dtype, interpolation):
+# Affine transform elementwise kernel
+# @context_dependent_memoize
+def get_transform_kernel(dtype, interpolation: str = 'linear', warm_up: bool = True):
 
     kernel = VoltoolsElementwiseKernel(
         args='{}* const volume, const int4* const dims, const float4* const xform'
@@ -116,6 +88,7 @@ def get_transform_kernel(dtype, interpolation):
             }} // helper_math should be added without C extern
             #include "helper_math.h"
             #include "helper_indexing.h"
+            #include "helper_textures.h"
             extern "C" {{
             texture<{}, 3, cudaReadModeElementType> coeff_tex;
         """.format(dtype_to_ctype(dtype)),
@@ -136,24 +109,55 @@ def get_transform_kernel(dtype, interpolation):
             ndx.z = dot(voxf, xform[2]);
             
             // get interpolated value
-            float v = tex3D(coeff_tex, ndx.x, ndx.y, ndx.z);
+            float v = {}(coeff_tex, ndx);
             volume[i] = v;
-        """.format(), # TODO interpolation
+        """.format('linearTex3D' if interpolation == 'linear' else
+                   'cubicTex3D' if interpolation == 'bspline' else
+                   'cubicTex3DSimple' if interpolation == 'bsplinehq' else
+                   'WRONG_INTERPOLATION'),
 
         name='transform3d',
         include_dirs=[str(_kernels_folder)],
         keep=True
     )
 
-    texture = kernel.get_texref('coeff_tex')
-    texture.set_filter_mode(driver.filter_mode.LINEAR)
-    texture.set_address_mode(0, driver.address_mode.BORDER)
-    texture.set_address_mode(1, driver.address_mode.BORDER)
-    texture.set_address_mode(2, driver.address_mode.BORDER)
-    texture.set_flags(driver.TRSF_READ_AS_INTEGER)
+    kernel.texture = kernel.get_texref('coeff_tex')
+    kernel.texture.set_filter_mode(driver.filter_mode.LINEAR)
+    kernel.texture.set_address_mode(0, driver.address_mode.BORDER)
+    kernel.texture.set_address_mode(1, driver.address_mode.BORDER)
+    kernel.texture.set_address_mode(2, driver.address_mode.BORDER)
+    kernel.texture.set_flags(driver.TRSF_READ_AS_INTEGER)
 
-    return kernel, texture
+    if warm_up:
+        vol = gpuarray.zeros(shape=(15, 15, 15), dtype=dtype)
+        vol.fill(1)
+        shape = gpuarray.to_gpu(np.array([15, 15, 15], dtype=np.int32))
+        xform = gpuarray.to_gpu(np.eye(4, dtype=np.float32))
+        kernel(vol, shape, xform)
 
+        del vol, shape, xform
+
+    return kernel
+
+# Correlation kernels
+@context_dependent_memoize
+def get_correlation_kernels(dtype, warm_up: bool = True):
+    num = ReductionKernel(dtype, neutral='0',
+                          map_expr='(x[i]-xm)*(y[i]-ym)', reduce_expr='a+b',
+                          arguments='float *x, float *y, float xm, float ym', keep=True)
+
+    den = ReductionKernel(dtype, neutral='0',
+                          map_expr='(x[i] - xm) * (x[i] - xm)', reduce_expr='a+b',
+                          arguments='float *x, float xm', keep=True)
+
+    if warm_up:
+        emp = gpuarray.zeros((20, 20), dtype=dtype)
+        emp.fill(1)
+        a = num(emp, emp, 0, 0)
+        b = den(emp, 0)
+        del emp, a, b
+
+    return num, den
 
 # Allocates pitched memory and copies from linear d_array, and then sets texture to that memory
 def gpuarray_to_texture(d_array, texture):
@@ -181,7 +185,7 @@ def gpuarray_to_texture(d_array, texture):
 
     return ary
 
-
+# TODO
 # def get_prefilter_kernel(dtype):
 #
 #     ctype = dtype_to_ctype(dtype)

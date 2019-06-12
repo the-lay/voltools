@@ -1,6 +1,7 @@
 import mrcfile as mrc
 import numpy as np
 
+
 def save_mrc(data: np.ndarray, path: str, dtype=np.float32):
     f = mrc.new(path)
 
