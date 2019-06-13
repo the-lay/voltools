@@ -43,44 +43,57 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import time
 
-    # random arrays
-    np.random.seed(1337)
-    d1 = np.random.rand(500, 500, 500).astype(np.float32)
-    vol1 = Volume(d1)
-    d2 = d1.copy()
-    vol2 = Volume(d2)
+    for size in [(50, 50, 50), (50, 100, 100), (100, 100, 100), (100, 500, 500), (300, 500, 500), (500, 500, 500), (750, 500, 500), (750, 750, 750)]:
 
-    # randomly rotate to some angle
-    x1 = np.random.randint(0, 180, dtype=np.int32)
-    transform(vol1, rotation=(x1, 0, 0), rotation_order='rzxz', return_cpu=False)
-    print(f'correct rotation is: ({x1}, 0, 0)')
-    print(f'let\'s try to brute force find it')
+        # random arrays
+        np.random.seed(1337)
+        d1 = np.random.rand(*size).astype(np.float32)
+        vol1 = Volume(d1)
+        d2 = d1.copy()
+        vol2 = Volume(d2)
 
-    def test_cpu_correlation(d1, vol2):
-        t1 = time.time()
-        for i in range(0, 180):
-            d2_rotated = transform(vol2, rotation=(i, 0, 0), rotation_order='rzxz', return_cpu=True)
-            corr = cpu_correlation(d1, d2_rotated)
-            if corr > 0.99:
-                print(f'rotation of ({i}, 0, 0)')
-                return time.time() - t1
-        print('didnt find it?')
+        # randomly rotate to some angle
+        # x1 = np.random.randint(0, 180, dtype=np.int32)
+        x1 = 34
+        transform(vol1, rotation=(x1, 0, 0), rotation_order='rzxz', return_cpu=False)
+        print(f'correct rotation is: ({x1}, 0, 0)')
+        print(f'let\'s try to brute force find it')
 
-    def test_gpu_correlation(x, y):
-        t1 = time.time()
-        for i in range(0, 180):
-            transform(y, rotation=(i, 0, 0), rotation_order='rzxz', return_cpu=False)
-            corr = correlation(x, y)
-            if corr > 0.99:
-                print(f'rotation of ({i}, 0, 0)')
-                return time.time() - t1
-        print('didnt find it?')
+        # warmup
+        correlation(vol1, vol2)
+        cpu_correlation(d1, d2)
 
-    print(test_gpu_correlation(vol1, vol2))
-    print(test_cpu_correlation(vol1.d_data.get(), vol2))
+        # 34 rotations
+        def test_cpu_correlation(d1, vol2):
+            total_time = 0
+            for i in range(0, 180):
+                d2_rotated = transform(vol2, rotation=(i, 0, 0), rotation_order='rzxz', return_cpu=True)
+                t1 = time.time()
+                corr = cpu_correlation(d1, d2_rotated)
+                total_time += time.time() - t1
+                if corr > 0.99:
+                    print(f'rotation of ({i}, 0, 0)')
+                    return total_time
+            print('didnt find it?')
+
+        def test_gpu_correlation(x, y):
+            total_time = 0
+            for i in range(0, 180):
+                transform(y, rotation=(i, 0, 0), rotation_order='rzxz', return_cpu=False)
+                t1 = time.time()
+                corr = correlation(x, y)
+                total_time += time.time() - t1
+                if corr > 0.99:
+                    print(f'rotation of ({i}, 0, 0)')
+                    return total_time
+            print('didnt find it?')
+
+        print(f'GPU for {size}: {test_gpu_correlation(vol1, vol2)}')
+        print(f'CPU for {size}: {test_cpu_correlation(vol1.d_data.get(), vol2)}')
 
 
 
+    # print('breakpoint')
 
     # print('CPU correlation')
     #
@@ -216,12 +229,12 @@ if __name__ == '__main__':
     #     Xm = gu.sum(X) /
 
 
-
-    fig, ax = plt.subplots(1, 2)
-    vol1_mod = vol1.d_data.get()
-    vol2_mod = vol2.d_data.get()
-    ax[0].imshow(vol1_mod[50], vmin=d1[50].min(), vmax=d1[50].max())
-    ax[1].imshow(vol2_mod[50], vmin=d2[50].min(), vmax=d2[50].max())
-
-    plt.show()
-    print('breakpoint')
+    #
+    # fig, ax = plt.subplots(1, 2)
+    # vol1_mod = vol1.d_data.get()
+    # vol2_mod = vol2.d_data.get()
+    # ax[0].imshow(vol1_mod[50], vmin=d1[50].min(), vmax=d1[50].max())
+    # ax[1].imshow(vol2_mod[50], vmin=d2[50].min(), vmax=d2[50].max())
+    #
+    # plt.show()
+    # print('breakpoint')
