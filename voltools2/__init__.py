@@ -2,10 +2,11 @@ from .version import __version__
 
 # Exports
 __all__ = [
-
+    'Volume',
 ]
 
 # Imports
+from .volume import Volume
 
 
 # PyCUDA initialization

@@ -1,23 +1,21 @@
 import numpy as np
+from enum import Enum
 
 from pycuda import gpuarray as gu
 from pycuda import driver
 from pycuda.compiler import SourceModule
 
-from utils.kernels import fits_on_gpu, get_transform_kernel, gpuarray_to_texture, get_correlation_kernels
-
+from utils.kernels import fits_on_gpu, get_transform_kernel, gpuarray_to_texture, get_correlation_kernels, Interpolation
+from utils.general import readable_size
 
 class Volume:
 
-    def __init__(self, data: np.array, prefilter: bool = False, interpolation: str = 'linear'):
+    def __init__(self, data: np.array, interpolation: Interpolation):
 
         # Check size
-        oom_check = fits_on_gpu(data.nbytes)
-        if not oom_check[0]:
-            raise ValueError('OOM: require {} GB for this volume, but GPU has {} GB'.format(
-                data.nbytes / (1000**3),
-                oom_check[1] / (1000**3)
-            ))
+        enough_memory, total_memory = fits_on_gpu(data.nbytes)
+        if not enough_memory:
+            raise ValueError(f'OOM: require {readable_size(data.nbytes)} for this volume, but GPU has {readable_size(total_memory)}')
 
         # Volume attributes
         self.shape = data.shape
@@ -28,9 +26,7 @@ class Volume:
         self.prefiltered = False
         self.interpolation = interpolation
 
-        # GPU
-        # self._kernel = get_volume_kernel(self.dtype)
-        #self._affine_kernel, self._affine_tex = get_transform_kernel(dtype=self.dtype, interpolation=self.interpolation)
+        # GPU properties
         self.d_shape = gu.to_gpu(np.array(self.shape, dtype=np.int32))
         self.d_data = gu.to_gpu(data)
 
@@ -41,8 +37,9 @@ class Volume:
             'affine': get_transform_kernel(dtype=self.dtype, interpolation=self.interpolation)
         }
 
-        if prefilter:
-            self.prefilter()
+        # Interpolation pre-processing
+        if self.interpolation == Interpolation.FILT_BSPLINE or self.interpolation == Interpolation.FILT_BSPLINEHQ:
+            self._bspline_prefilter()
         else:
             gpuarray_to_texture(self.d_data, self.kernel('affine').texture)
 
@@ -79,7 +76,8 @@ class Volume:
         else:
             return True
 
-
-
+    #
+    # def cpu(self):
+    #     return self.d_data.cpu()
 
 

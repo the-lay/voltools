@@ -22,7 +22,8 @@ setuptools.setup(
     install_requires=[
         'pycuda',
         'numpy',
-        'transforms3d'
+        'transforms3d',
+        'scikit-cuda'
     ],
     packages=setuptools.find_packages(),
     include_package_data=True,
