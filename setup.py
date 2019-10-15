@@ -1,8 +1,7 @@
 import setuptools
 
 # version fetch
-with open('voltools/version.py', 'r') as f:
-    exec(f.read())
+from voltools2 import __version__
 
 # readme fetch
 with open('README.md', 'r') as f:

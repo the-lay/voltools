@@ -1,4 +1,5 @@
 import numpy as np
+from transforms3d.euler import euler2mat
 
 # Rotation routines, heavily based on Christoph Gohlike's transformations.py
 # axis sequences for Euler angles
@@ -14,6 +15,7 @@ _AXES2TUPLE = {
     'rzxy': (1, 1, 0, 1), 'ryxy': (1, 1, 1, 1), 'ryxz': (2, 0, 0, 1),
     'rzxz': (2, 0, 1, 1), 'rxyz': (2, 1, 0, 1), 'rzyz': (2, 1, 1, 1)}
 _TUPLE2AXES = dict((v, k) for k, v in _AXES2TUPLE.items())
+AVAILABLE_ROTATIONS = list(_AXES2TUPLE.keys())
 
 
 # Matrix methods
@@ -42,8 +44,8 @@ def rotation_matrix(rotation, rotation_units='deg', rotation_order='rzxz', dtype
     if rotation_units not in ['deg', 'rad']:
         raise ValueError('Rotation units must be \'deg\' or \'rad\'.')
 
-    if rotation_order not in _AXES2TUPLE:
-        raise ValueError('Rotation order must be one of {}'.format([k for k in _AXES2TUPLE.keys()]))
+    if rotation_order not in AVAILABLE_ROTATIONS:
+        raise ValueError(f'Rotation order must be one of {AVAILABLE_ROTATIONS}')
 
     # Units conversion
     if rotation_units == 'deg':

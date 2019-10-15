@@ -4,7 +4,7 @@ from pycuda import gpuarray as gu
 from pycuda import driver
 from pycuda.compiler import SourceModule
 
-from utils.kernels import fits_on_gpu, get_transform_kernel, gpuarray_to_texture, get_correlation_kernels
+from .utils import fits_on_gpu, get_transform_kernel, gpuarray_to_texture, get_correlation_kernels
 
 
 class Volume:
