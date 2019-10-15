@@ -10,6 +10,7 @@ from pycuda.compiler import SourceModule
 from pycuda.tools import dtype_to_ctype, context_dependent_memoize, parse_c_arg
 from pycuda.reduction import ReductionKernel
 from pycuda.elementwise import ElementwiseKernel, get_elwise_module, VectorArg, ScalarArg
+from typing import Tuple, Union
 
 # Load all kernels on init
 _kernels = {}
@@ -19,7 +20,7 @@ for kernel in [x for x in _kernels_folder.glob('**/*') if x.suffix == '.cu']:
         _kernels[kernel.name] = f.read()
 
 # OOM naive checks
-def fits_on_gpu(nbytes):
+def fits_on_gpu(nbytes: int) -> Tuple[bool, int]:
     return nbytes < __cuda.device.total_memory(), __cuda.device.total_memory()
 
 class Interpolation(Enum):
@@ -83,69 +84,6 @@ class VoltoolsElementwiseKernel:
             print('Kernel {} took {:.4f} seconds ({:.2f}ms) to execute'.format(self.name, timing(), timing() * 1000))
         else:
             self.func.prepared_call(grid, block, *invocation_args)
-
-# Affine transform elementwise kernel
-# @context_dependent_memoize
-def get_transform_kernel(dtype, interpolation: str = 'linear', warm_up: bool = True):
-
-    kernel = VoltoolsElementwiseKernel(
-        args='{}* const volume, const int4* const dims, const float4* const xform'
-             .format(dtype_to_ctype(dtype)),
-
-        preamble="""
-            }} // helper_math should be added without C extern
-            #include "helper_math.h"
-            #include "helper_indexing.h"
-            #include "helper_textures.h"
-            extern "C" {{
-            texture<{}, 3, cudaReadModeElementType> coeff_tex;
-        """.format(dtype_to_ctype(dtype)),
-
-        body="""
-            // indices
-            int x = get_x_idx(i, dims);
-            int y = get_y_idx(i, dims);
-            int z = get_z_idx(i, dims);
-            
-            // thread idx to texels (adding + .5f to be in the center of texel)
-            float4 voxf = make_float4(((float)x) + .5f, ((float)y) + .5f, ((float)z) + .5f, 1.0f);
-            
-            // apply matrix
-            float4 ndx;
-            ndx.x = dot(voxf, xform[0]);
-            ndx.y = dot(voxf, xform[1]);
-            ndx.z = dot(voxf, xform[2]);
-            
-            // get interpolated value
-            float v = {}(coeff_tex, ndx);
-            volume[i] = v;
-        """.format('linearTex3D' if interpolation == 'linear' else
-                   'cubicTex3D' if interpolation == 'bspline' else
-                   'cubicTex3DSimple' if interpolation == 'bsplinehq' else
-                   'WRONG_INTERPOLATION'),
-
-        name='transform3d',
-        include_dirs=[str(_kernels_folder)],
-        keep=True
-    )
-
-    kernel.texture = kernel.get_texref('coeff_tex')
-    kernel.texture.set_filter_mode(driver.filter_mode.LINEAR)
-    kernel.texture.set_address_mode(0, driver.address_mode.BORDER)
-    kernel.texture.set_address_mode(1, driver.address_mode.BORDER)
-    kernel.texture.set_address_mode(2, driver.address_mode.BORDER)
-    kernel.texture.set_flags(driver.TRSF_READ_AS_INTEGER)
-
-    if warm_up:
-        vol = gpuarray.zeros(shape=(15, 15, 15), dtype=dtype)
-        vol.fill(1)
-        shape = gpuarray.to_gpu(np.array([15, 15, 15], dtype=np.int32))
-        xform = gpuarray.to_gpu(np.eye(4, dtype=np.float32))
-        kernel(vol, shape, xform)
-
-        del vol, shape, xform
-
-    return kernel
 
 # Correlation kernels
 @context_dependent_memoize
