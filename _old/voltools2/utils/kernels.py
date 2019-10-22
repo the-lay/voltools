@@ -23,13 +23,6 @@ for kernel in [x for x in _kernels_folder.glob('**/*') if x.suffix == '.cu']:
 def fits_on_gpu(nbytes: int) -> Tuple[bool, int]:
     return nbytes < __cuda.device.total_memory(), __cuda.device.total_memory()
 
-class Interpolation(Enum):
-    LINEAR = 'linearTex3D'
-    BSPLINE = 'cubicTex3D'
-    BSPLINEHQ = 'cubicTex3DSimple'
-    FILT_BSPLINE = 'cubicTex3D'
-    FILT_BSPLINEHQ = 'cubicTex3DSimple'
-
 # Elementwise kernel
 class VoltoolsElementwiseKernel:
 

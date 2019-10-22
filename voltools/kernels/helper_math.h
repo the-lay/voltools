@@ -27,6 +27,8 @@
 
 typedef unsigned int uint;
 typedef unsigned short ushort;
+typedef unsigned char uchar;
+typedef signed char schar;
 
 #ifndef __CUDACC__
 #include <math.h>
@@ -178,6 +180,10 @@ inline __host__ __device__ uint3 make_uint3(int3 a)
 {
     return make_uint3(uint(a.x), uint(a.y), uint(a.z));
 }
+inline __host__ __device__ uint3 make_uint3(dim3 a)
+{
+    return make_uint3(uint(a.x), uint(a.y), uint(a.z));
+}
 
 inline __host__ __device__ float4 make_float4(float s)
 {
@@ -198,6 +204,10 @@ inline __host__ __device__ float4 make_float4(int4 a)
 inline __host__ __device__ float4 make_float4(uint4 a)
 {
     return make_float4(float(a.x), float(a.y), float(a.z), float(a.w));
+}
+inline __host__ __device__ float4 make_float4(uint3 a, float w)
+{
+    return make_float4(float(a.x), float(a.y), float(a.z), w);
 }
 
 inline __host__ __device__ int4 make_int4(int s)
@@ -1444,6 +1454,23 @@ inline __device__ __host__ float4 smoothstep(float4 a, float4 b, float4 x)
 {
     float4 y = clamp((x - a) / (b - a), 0.0f, 1.0f);
     return (y*y*(make_float4(3.0f) - (make_float4(2.0f)*y)));
+}
+
+///////////////////////////
+// CUSTOM
+///////////////////////////
+inline __host__ __device__ float3 floor(const float3 v)
+{
+    return make_float3(floor(v.x), floor(v.y), floor(v.z));
+}
+inline __host__ __device__ float dot(float3 a, float4 b)
+{
+    return a.x * b.x + a.y * b.y + a.z * b.z + b.w;
+}
+#define Pole (sqrt(3.0f)-2.0f)  //pole for cubic b-spline
+inline __device__ __host__ uint UMIN(uint a, uint b)
+{
+	return a < b ? a : b;
 }
 
 #endif

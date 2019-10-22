@@ -5,13 +5,13 @@ from pycuda import gpuarray as gu
 from pycuda import driver
 from pycuda.compiler import SourceModule
 
-from .utils import fits_on_gpu, get_transform_kernel, gpuarray_to_texture, get_correlation_kernels
-from utils.general import readable_size
+from .utils import fits_on_gpu, gpuarray_to_texture, get_correlation_kernels, readable_size
+from .transforms import Interpolations
 
 
 class Volume:
 
-    def __init__(self, data: np.array, interpolation: Interpolation):
+    def __init__(self, data: np.array, interpolation: Interpolations = Interpolations.LINEAR):
 
         # Check size
         enough_memory, total_memory = fits_on_gpu(data.nbytes)

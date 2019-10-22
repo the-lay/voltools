@@ -1,7 +1,7 @@
 import setuptools
 
 # version fetch
-from voltools2 import __version__
+from voltools import __version__
 
 # readme fetch
 with open('README.md', 'r') as f:
@@ -19,12 +19,12 @@ setuptools.setup(
     url='https://github.com/the-lay/voltools',
     platforms=['any'],
     install_requires=[
-        'pycuda',
+        # 'cupy-cuda*>=7.0.0b4',
         'numpy',
-        'transforms3d',
-        'scikit-cuda'
+        #'scikit-cuda',
+        'aenum'
     ],
-    packages=setuptools.find_packages(),
+    packages=['voltools'],
     include_package_data=True,
     zip_safe=False,
     test_suite='tests'
