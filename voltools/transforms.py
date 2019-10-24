@@ -6,7 +6,7 @@ import cupy as cp
 from typing import Union, Tuple
 from pathlib import Path
 
-from utils import scale_matrix, shear_matrix, rotation_matrix, translation_matrix, transform_matrix, \
+from .utils import scale_matrix, shear_matrix, rotation_matrix, translation_matrix, transform_matrix, \
     compute_prefilter_workgroup_dims, compute_elementwise_launch_dims
 
 

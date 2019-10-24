@@ -2,8 +2,8 @@ import numpy as np
 import cupy as cp
 import time
 from typing import Tuple, Union
-from transforms import Interpolations, _get_transform_kernel, _bspline_prefilter
-from utils import compute_elementwise_launch_dims,\
+from .transforms import Interpolations, _get_transform_kernel, _bspline_prefilter
+from .utils import compute_elementwise_launch_dims,\
     scale_matrix, shear_matrix, rotation_matrix, translation_matrix, transform_matrix
 
 class StaticVolume:
