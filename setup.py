@@ -24,7 +24,7 @@ setuptools.setup(
         #'scikit-cuda',
         'aenum'
     ],
-    packages=['voltools'],
+    packages=setuptools.find_packages(),
     include_package_data=True,
     zip_safe=False,
     test_suite='tests',
