@@ -28,7 +28,10 @@ def transform(volume: Union[np.ndarray, cp.ndarray],
               translation: Union[Tuple[float, float, float], np.ndarray] = None,
               center: Union[Tuple[float, float, float], np.ndarray] = None,
               interpolation: Interpolations = Interpolations.LINEAR,
-              profile: bool = False, inplace: bool = True) -> Union[cp.ndarray, None]:
+              profile: bool = False, inplace: bool = False) -> Union[cp.ndarray, None]:
+
+    if center is None:
+        center = np.divide(volume.shape, 2, dtype=np.float32)
 
     m = transform_matrix(scale, shear, rotation, rotation_units, rotation_order,
                          translation, center)
@@ -38,7 +41,7 @@ def transform(volume: Union[np.ndarray, cp.ndarray],
 def translate(volume: Union[np.ndarray, cp.ndarray],
               translation: Tuple[float, float, float],
               interpolation: Interpolations = Interpolations.LINEAR,
-              profile: bool = False, inplace: bool = True) -> Union[cp.ndarray, None]:
+              profile: bool = False, inplace: bool = False) -> Union[cp.ndarray, None]:
 
     m = translation_matrix(translation)
     return affine(volume, m, interpolation, profile, inplace)
@@ -47,7 +50,7 @@ def translate(volume: Union[np.ndarray, cp.ndarray],
 def shear(volume: Union[np.ndarray, cp.ndarray],
           coefficients: Union[float, Tuple[float, float, float]],
           interpolation: Interpolations = Interpolations.LINEAR,
-          profile: bool = False, inplace: bool = True) -> Union[cp.ndarray, None]:
+          profile: bool = False, inplace: bool = False) -> Union[cp.ndarray, None]:
 
     # passing just one float is uniform scaling
     if isinstance(coefficients, float):
@@ -60,7 +63,7 @@ def shear(volume: Union[np.ndarray, cp.ndarray],
 def scale(volume: Union[np.ndarray, cp.ndarray],
           coefficients: Union[float, Tuple[float, float, float]],
           interpolation: Interpolations = Interpolations.LINEAR,
-          profile: bool = False, inplace: bool = True) -> Union[cp.ndarray, None]:
+          profile: bool = False, inplace: bool = False) -> Union[cp.ndarray, None]:
 
     # passing just one float is uniform scaling
     if isinstance(coefficients, float):
@@ -75,7 +78,7 @@ def rotate(volume: Union[np.ndarray, cp.ndarray],
            rotation_units: str = 'deg',
            rotation_order: str = 'rzxz',
            interpolation: Interpolations = Interpolations.LINEAR,
-           profile: bool = False, inplace: bool = True) -> Union[cp.ndarray, None]:
+           profile: bool = False, inplace: bool = False) -> Union[cp.ndarray, None]:
 
     m = rotation_matrix(rotation=rotation, rotation_units=rotation_units, rotation_order=rotation_order)
     return affine(volume, m, interpolation, profile, inplace)
@@ -84,7 +87,7 @@ def rotate(volume: Union[np.ndarray, cp.ndarray],
 def affine(volume: Union[np.ndarray, cp.ndarray],
            transform_m: np.ndarray,
            interpolation: Interpolations = Interpolations.LINEAR,
-           profile: bool = False, inplace: bool = True) -> Union[cp.ndarray, None]:
+           profile: bool = False, inplace: bool = False) -> Union[cp.ndarray, None]:
 
     t_start = time.perf_counter()
 
@@ -213,46 +216,3 @@ def _bspline_prefilter(volume: cp.ndarray):
     prefilter_z(dim_grid[2], dim_block[2], (volume, slice_stride, dims))
 
     return volume
-
-
-
-
-
-if __name__ == '__main__':
-
-    import matplotlib.pyplot as plt
-    plt.ion()
-
-    #depth, height, width = 5, 6, 7
-    depth, height, width = 100, 200, 300
-
-    #vol = cp.arange(depth * height * width, dtype=cp.float32).reshape(depth, height, width)
-    vol = cp.random.random((depth, height, width), dtype=cp.float32) * 1000
-    #vol = cp.ones((depth, height, width), dtype=cp.float32)
-
-    fig, ax = plt.subplots(2, 3, sharex='col', sharey='col')
-    ax[0,0].set_ylabel('cpu')
-    ax[1,0].set_ylabel('gpu')
-    ax[0,0].set_title('slice 0')
-    ax[0,1].set_title('slice 50')
-    ax[0,2].set_title('slice 99')
-
-    m = transform_matrix(translation=(0, 0, 0),
-                         rotation=(25, 0, 0), rotation_order='rzxz',
-                         center=np.divide(vol.shape, 2, dtype=np.float32))
-
-    # cpu reference
-    from scipy.ndimage import affine_transform
-    cpu = affine_transform(vol.get(), m)
-    ax[0, 0].imshow(cpu[0])
-    ax[0, 1].imshow(cpu[50])
-    ax[0, 2].imshow(cpu[99])
-
-    # gpu output
-    gpu = affine(vol, m, inplace=False, profile=False, interpolation=Interpolations.FILT_BSPLINE)
-    ax[1, 0].imshow(gpu[0].get())
-    ax[1, 1].imshow(gpu[50].get())
-    ax[1, 2].imshow(gpu[99].get())
-
-    fig.show()
-    plt.pause(2)

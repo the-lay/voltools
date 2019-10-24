@@ -147,7 +147,7 @@ def transform_matrix(scale: Union[Tuple[float, float, float], np.ndarray] = None
     if center is not None:
         m = np.dot(m, translation_matrix(center, dtype))
 
-    # Keep it homogeneous
+    # Keep it homo, geneous
     m /= m[3, 3]
 
     return m
