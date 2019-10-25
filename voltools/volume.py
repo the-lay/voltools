@@ -37,16 +37,21 @@ class StaticVolume:
         # workgroup dims
         self.dim_grid, self.dim_blocks = compute_elementwise_launch_dims(data.shape)
 
-    def affine(self, transform_m: np.ndarray, profile: bool = False) -> cp.ndarray:
+    def affine(self, transform_m: np.ndarray, profile: bool = False, output: cp.ndarray = None)\
+            -> Union[cp.ndarray, None]:
 
         t_start = time.perf_counter()
 
         # kernel setup
         xform = cp.asarray(transform_m)
-        output = cp.zeros(tuple(self.d_shape.get().tolist()), dtype=self.d_type)
+
+        if output is None:
+            output_vol = cp.zeros(tuple(self.d_shape.get().tolist()), dtype=self.d_type)
+        else:
+            output_vol = output
 
         # launch
-        self.affine_kernel(self.dim_grid, self.dim_blocks, (output, self.tex_obj, xform, self.d_shape))
+        self.affine_kernel(self.dim_grid, self.dim_blocks, (output_vol, self.tex_obj, xform, self.d_shape))
 
         if profile:
             cp.cuda.get_current_stream().synchronize()
@@ -54,7 +59,10 @@ class StaticVolume:
             print(f'transform finished in {time_took:.3f}ms')
 
         del xform
-        return output
+        if output is None:
+            return output_vol
+        else:
+            return None
 
     def transform(self, scale: Union[Tuple[float, float, float], np.ndarray] = None,
                   shear: Union[Tuple[float, float, float], np.ndarray] = None,
@@ -62,62 +70,49 @@ class StaticVolume:
                   rotation_units: str = 'deg', rotation_order: str = 'rzxz',
                   translation: Union[Tuple[float, float, float], np.ndarray] = None,
                   center: Union[Tuple[float, float, float], np.ndarray] = None,
-                  profile: bool = False) -> cp.ndarray:
+                  profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
 
         if center is None:
             center = np.divide(self.shape, 2, dtype=np.float32)
 
         m = transform_matrix(scale, shear, rotation, rotation_units, rotation_order,
                              translation, center)
-        return self.affine(m, profile)
+        return self.affine(m, profile, output)
 
     def translate(self,
                   translation: Tuple[float, float, float],
-                  profile: bool = False) -> cp.ndarray:
+                  profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
 
         m = translation_matrix(translation)
-        return self.affine(m, profile)
+        return self.affine(m, profile, output)
 
     def shear(self,
               coefficients: Union[float, Tuple[float, float, float]],
-              profile: bool = False) -> cp.ndarray:
+              profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
 
         # passing just one float is uniform scaling
         if isinstance(coefficients, float):
             coefficients = (coefficients, coefficients, coefficients)
 
         m = shear_matrix(coefficients)
-        return self.affine(m, profile)
+        return self.affine(m, profile, output)
 
     def scale(self,
               coefficients: Union[float, Tuple[float, float, float]],
-              profile: bool = False) -> cp.ndarray:
+              profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
 
         # passing just one float is uniform scaling
         if isinstance(coefficients, float):
             coefficients = (coefficients, coefficients, coefficients)
 
         m = scale_matrix(coefficients)
-        return self.affine(m, profile)
+        return self.affine(m, profile, output)
 
     def rotate(self,
                rotation: Tuple[float, float, float],
                rotation_units: str = 'deg',
                rotation_order: str = 'rzxz',
-               profile: bool = False) -> cp.ndarray:
+               profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
 
         m = rotation_matrix(rotation=rotation, rotation_units=rotation_units, rotation_order=rotation_order)
-        return self.affine(m, profile)
-
-
-if __name__ == '__main__':
-    import matplotlib.pyplot as plt
-    depth, height, width = 200, 200, 200
-    d = cp.random.random((depth, height, width), dtype=cp.float32) * 1000
-
-    volume = StaticVolume(d, interpolation=Interpolations.FILT_BSPLINE)
-
-    for i in range(0, 180, 3):
-        transformed_vol = volume.transform(rotation=(0, i, 0), rotation_units='deg', rotation_order='rzxz', profile=True)
-        plt.imshow(transformed_vol[depth//2].get())
-        plt.show()
+        return self.affine(m, profile, output)

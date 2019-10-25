@@ -28,49 +28,49 @@ def transform(volume: Union[np.ndarray, cp.ndarray],
               translation: Union[Tuple[float, float, float], np.ndarray] = None,
               center: Union[Tuple[float, float, float], np.ndarray] = None,
               interpolation: Interpolations = Interpolations.LINEAR,
-              profile: bool = False, inplace: bool = False) -> Union[cp.ndarray, None]:
+              profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
 
     if center is None:
         center = np.divide(volume.shape, 2, dtype=np.float32)
 
     m = transform_matrix(scale, shear, rotation, rotation_units, rotation_order,
                          translation, center)
-    return affine(volume, m, interpolation, profile, inplace)
+    return affine(volume, m, interpolation, profile, output)
 
 
 def translate(volume: Union[np.ndarray, cp.ndarray],
               translation: Tuple[float, float, float],
               interpolation: Interpolations = Interpolations.LINEAR,
-              profile: bool = False, inplace: bool = False) -> Union[cp.ndarray, None]:
+              profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
 
     m = translation_matrix(translation)
-    return affine(volume, m, interpolation, profile, inplace)
+    return affine(volume, m, interpolation, profile, output)
 
 
 def shear(volume: Union[np.ndarray, cp.ndarray],
           coefficients: Union[float, Tuple[float, float, float]],
           interpolation: Interpolations = Interpolations.LINEAR,
-          profile: bool = False, inplace: bool = False) -> Union[cp.ndarray, None]:
+          profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
 
     # passing just one float is uniform scaling
     if isinstance(coefficients, float):
         coefficients = (coefficients, coefficients, coefficients)
 
     m = shear_matrix(coefficients)
-    return affine(volume, m, interpolation, profile, inplace)
+    return affine(volume, m, interpolation, profile, output)
 
 
 def scale(volume: Union[np.ndarray, cp.ndarray],
           coefficients: Union[float, Tuple[float, float, float]],
           interpolation: Interpolations = Interpolations.LINEAR,
-          profile: bool = False, inplace: bool = False) -> Union[cp.ndarray, None]:
+          profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
 
     # passing just one float is uniform scaling
     if isinstance(coefficients, float):
         coefficients = (coefficients, coefficients, coefficients)
 
     m = scale_matrix(coefficients)
-    return affine(volume, m, interpolation, profile, inplace)
+    return affine(volume, m, interpolation, profile, output)
 
 
 def rotate(volume: Union[np.ndarray, cp.ndarray],
@@ -78,16 +78,16 @@ def rotate(volume: Union[np.ndarray, cp.ndarray],
            rotation_units: str = 'deg',
            rotation_order: str = 'rzxz',
            interpolation: Interpolations = Interpolations.LINEAR,
-           profile: bool = False, inplace: bool = False) -> Union[cp.ndarray, None]:
+           profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
 
     m = rotation_matrix(rotation=rotation, rotation_units=rotation_units, rotation_order=rotation_order)
-    return affine(volume, m, interpolation, profile, inplace)
+    return affine(volume, m, interpolation, profile, output)
 
 
 def affine(volume: Union[np.ndarray, cp.ndarray],
            transform_m: np.ndarray,
            interpolation: Interpolations = Interpolations.LINEAR,
-           profile: bool = False, inplace: bool = False) -> Union[cp.ndarray, None]:
+           profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
 
     t_start = time.perf_counter()
 
@@ -107,12 +107,8 @@ def affine(volume: Union[np.ndarray, cp.ndarray],
 
     # prefilter if required and upload to texture
     if interpolation == Interpolations.FILT_BSPLINE or interpolation == Interpolations.FILT_BSPLINE_SIMPLE:
-        if inplace:
-            volume = _bspline_prefilter(volume)
-            arr.copy_from(volume)
-        else:
-            prefiltered_volume = _bspline_prefilter(volume)
-            arr.copy_from(prefiltered_volume)
+        prefiltered_volume = _bspline_prefilter(volume)
+        arr.copy_from(prefiltered_volume)
     else:
         arr.copy_from(volume)
 
@@ -122,24 +118,24 @@ def affine(volume: Union[np.ndarray, cp.ndarray],
     xform = cp.asarray(transform_m)
     dim_grid, dim_blocks = compute_elementwise_launch_dims(volume.shape)
 
-    if inplace:
-        volume.fill(0)
-        kernel(dim_grid, dim_blocks, (volume, texobj, xform, dims))
+    if output is None:
+        output_vol = cp.zeros_like(volume)
     else:
-        output = cp.zeros_like(volume)
-        kernel(dim_grid, dim_blocks, (output, texobj, xform, dims))
+        output_vol = output
+
+    kernel(dim_grid, dim_blocks, (output_vol, texobj, xform, dims))
 
     if profile:
         cp.cuda.get_current_stream().synchronize()
         time_took = (time.perf_counter() - t_start) * 1000
         print(f'transform finished in {time_took:.3f}ms')
 
-    if inplace:
+    if output is None:
         del texobj, xform, dims
-        return volume
+        return output_vol
     else:
         del texobj, xform, dims
-        return output
+        return None
 
 @cp.memoize()
 def _get_transform_kernel(interpolation: Interpolations = Interpolations.LINEAR) -> cp.RawKernel:

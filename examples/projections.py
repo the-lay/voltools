@@ -1,30 +1,88 @@
 import voltools as vt
 import cupy as cp
+import numpy as np
 import matplotlib.pyplot as plt
 plt.ion()
 
-# Define volume
+# Definitions
 depth, height, width = 100, 200, 300
-vol_data = cp.random.random((depth, height, width), dtype=cp.float32)
-
-#### Rotate from -60 to +60 in 3deg increments and show projection
-# with StaticVolume
-volume = vt.StaticVolume(vol_data, interpolation=vt.Interpolations.FILT_BSPLINE)
+volume_np = np.random.random((depth, height, width)).astype(np.float32)
+volume_cp = cp.asarray(volume_np, dtype=cp.float32)
+static_volume = vt.StaticVolume(volume_cp, interpolation=vt.Interpolations.FILT_BSPLINE)
 fig, ax = plt.subplots(1, 1)
-print('Rotating with StaticVolume')
+
+###########################################################################
+##################### Examples
+###########################################################################
+
+print('Rotating StaticVolume')
 for i in range(-60, 60, 3):
-    rotated_volume = volume.transform(rotation=(i, 0, 0), rotation_order='sxyz', profile=True)
+    rotated_volume = static_volume.transform(rotation=(i, 0, 0), rotation_order='sxyz', profile=True)
     projection = rotated_volume.sum(axis=0).get()
     ax.set_title(f'Tilt angle: {i} degrees')
     ax.imshow(projection)
     fig.show()
     plt.pause(1)
 
-# with generic transform
-print('Rotating with voltools.transform()')
+###########################################################################
+print('Rotating StaticVolume, specified output')
+rotated_volume = cp.zeros_like(volume_cp)
 for i in range(-60, 60, 3):
-    rotated_volume = vt.transform(vol_data, rotation=(i, 0, 0), rotation_order='sxyz', profile=True)
+    rotated_volume.fill(0)
+    static_volume.transform(rotation=(i, 0, 0), rotation_order='sxyz', profile=True, output=rotated_volume)
     projection = rotated_volume.sum(axis=0).get()
+    ax.set_title(f'Tilt angle: {i} degrees')
+    ax.imshow(projection)
+    fig.show()
+    plt.pause(1)
+
+###########################################################################
+print('Rotating numpy array with voltools.transform()')
+for i in range(-60, 60, 3):
+    rotated_volume = vt.transform(volume_np, rotation=(i, 0, 0), rotation_order='sxyz', profile=True)
+    projection = rotated_volume.sum(axis=0).get()
+    ax.set_title(f'Tilt angle: {i} degrees')
+    ax.imshow(projection)
+    fig.show()
+    plt.pause(1)
+
+###########################################################################
+print('Rotating cupy array with voltools.transform()')
+for i in range(-60, 60, 3):
+    rotated_volume = vt.transform(volume_cp, rotation=(i, 0, 0), rotation_order='sxyz', profile=True)
+    projection = rotated_volume.sum(axis=0).get()
+    ax.set_title(f'Tilt angle: {i} degrees')
+    ax.imshow(projection)
+    fig.show()
+    plt.pause(1)
+
+###########################################################################
+print('Rotating cupy array with voltools.transform(), specified output')
+rotated_volume = cp.zeros_like(volume_cp)
+for i in range(-60, 60, 3):
+    # fill with 0 to clear previous transformations
+    rotated_volume.fill(0)
+    # rotated over first axis i degrees and write output to rotated_volume
+    vt.transform(volume_cp, rotation=(i, 0, 0), rotation_order='sxyz', profile=True, output=rotated_volume)
+    # get projection
+    projection = rotated_volume.sum(axis=0).get()
+    # show projection
+    ax.set_title(f'Tilt angle: {i} degrees')
+    ax.imshow(projection)
+    fig.show()
+    plt.pause(1)
+
+###########################################################################
+print('Rotating numpy array with voltools.transform(), specified output')
+rotated_volume = cp.zeros_like(volume_cp)
+for i in range(-60, 60, 3):
+    # fill with 0 to clear previous transformations
+    rotated_volume.fill(0)
+    # rotated over first axis i degrees and write output to rotated_volume
+    vt.transform(volume_np, rotation=(i, 0, 0), rotation_order='sxyz', profile=True, output=rotated_volume)
+    # get projection
+    projection = rotated_volume.sum(axis=0).get()
+    # show projection
     ax.set_title(f'Tilt angle: {i} degrees')
     ax.imshow(projection)
     fig.show()

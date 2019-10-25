@@ -46,7 +46,6 @@ Source: `pip install git+https://github.com/the-lay/voltools`
 - Visualizations?
 - Return scripts: projections
 - Develop branch for cleaner sepration of code
-- Remove `_old` code
 
 #### Notes
 - CUDA cubic b-spline interpolation is based on [Danny Ruijters's implementation](https://github.com/DannyRuijters/CubicInterpolationCUDA/)
