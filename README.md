@@ -35,6 +35,8 @@ for i in range(0, 180):
 - `Interpolation.FILT_BSPLINE_SIMPLE`, prefiltered cubic b-spline interpolation (27 texture lookups)
 
 #### Installation
+##### Requires cupy >= 7.0.0b4
+
 PIP: `pip install voltools`  
 Source: `pip install git+https://github.com/the-lay/voltools`
 

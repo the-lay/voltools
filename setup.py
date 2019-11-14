@@ -19,7 +19,7 @@ setuptools.setup(
     url='https://github.com/the-lay/voltools',
     platforms=['any'],
     install_requires=[
-        'cupy>=7.0.0b4',
+        #'cupy>=7.0.0b4',
         'numpy',
         #'scikit-cuda',
         'aenum'
