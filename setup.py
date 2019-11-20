@@ -10,7 +10,7 @@ with open('README.md', 'r') as f:
 setuptools.setup(
     name='voltools',
     version=__version__,
-    description='CUDA-accelerated 3D affine transformations for Python',
+    description='CUDA-accelerated 3D affine transformations for NumPy and CuPy',
     long_description=long_description,
     long_description_content_type='text/markdown',
     license='MIT',

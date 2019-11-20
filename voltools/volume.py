@@ -1,6 +1,5 @@
 import numpy as np
 import cupy as cp
-import time
 from typing import Tuple, Union
 from .transforms import Interpolations, _get_transform_kernel, _bspline_prefilter
 from .utils import compute_elementwise_launch_dims,\
@@ -8,11 +7,13 @@ from .utils import compute_elementwise_launch_dims,\
 
 class StaticVolume:
 
-    def __init__(self, data: cp.ndarray, interpolation: Interpolations = Interpolations.LINEAR):
+    def __init__(self, data: cp.ndarray, interpolation: Interpolations = Interpolations.LINEAR,
+                 device_id: int = 0):
 
         if data.ndim != 3:
             raise ValueError('Expected a 3D array')
 
+        cp.cuda.Device(device_id).use()
         self.shape = data.shape
         self.d_shape = cp.asarray(data.shape, dtype=cp.uint32)
         self.d_type = data.dtype
@@ -30,17 +31,21 @@ class StaticVolume:
         self.tex_obj = cp.cuda.texture.TextureObject(self.res, self.tex)
 
         # prefilter if required and upload to texture
-        if interpolation == Interpolations.FILT_BSPLINE or interpolation == Interpolations.FILT_BSPLINE_SIMPLE:
-            _bspline_prefilter(data)
-        arr.copy_from(data)
+        if interpolation.name.startswith('FILT_BSPLINE'):
+            prefiltered_volume = _bspline_prefilter(data.copy())  # copy to avoid modifying existing volume
+            arr.copy_from(prefiltered_volume)
+        else:
+            arr.copy_from(data)
 
         # workgroup dims
         self.dim_grid, self.dim_blocks = compute_elementwise_launch_dims(data.shape)
 
-    def affine(self, transform_m: np.ndarray, profile: bool = False, output: cp.ndarray = None)\
-            -> Union[cp.ndarray, None]:
+    def affine(self, transform_m: np.ndarray, profile: bool = False, output: cp.ndarray = None) -> \
+            Union[cp.ndarray, None]:
 
-        t_start = time.perf_counter()
+        if profile:
+            stream = cp.cuda.Stream.null
+            t_start = stream.record()
 
         # kernel setup
         xform = cp.asarray(transform_m)
@@ -54,8 +59,10 @@ class StaticVolume:
         self.affine_kernel(self.dim_grid, self.dim_blocks, (output_vol, self.tex_obj, xform, self.d_shape))
 
         if profile:
-            cp.cuda.get_current_stream().synchronize()
-            time_took = (time.perf_counter() - t_start) * 1000
+            t_end = stream.record()
+            t_end.synchronize()
+
+            time_took = cp.cuda.get_elapsed_time(t_start, t_end)
             print(f'transform finished in {time_took:.3f}ms')
 
         del xform

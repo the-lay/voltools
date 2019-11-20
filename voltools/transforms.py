@@ -89,7 +89,9 @@ def affine(volume: Union[np.ndarray, cp.ndarray],
            interpolation: Interpolations = Interpolations.LINEAR,
            profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
 
-    t_start = time.perf_counter()
+    if profile:
+        stream = cp.cuda.Stream.null
+        t_start = stream.record()
 
     if isinstance(volume, np.ndarray):
         volume = cp.asarray(volume)
@@ -106,8 +108,8 @@ def affine(volume: Union[np.ndarray, cp.ndarray],
     texobj = cp.cuda.texture.TextureObject(res, tex)
 
     # prefilter if required and upload to texture
-    if interpolation == Interpolations.FILT_BSPLINE or interpolation == Interpolations.FILT_BSPLINE_SIMPLE:
-        prefiltered_volume = _bspline_prefilter(volume)
+    if interpolation.name.startswith('FILT_BSPLINE'):
+        prefiltered_volume = _bspline_prefilter(volume.copy())  # copy to avoid modifying existing volume
         arr.copy_from(prefiltered_volume)
     else:
         arr.copy_from(volume)
@@ -126,8 +128,10 @@ def affine(volume: Union[np.ndarray, cp.ndarray],
     kernel(dim_grid, dim_blocks, (output_vol, texobj, xform, dims))
 
     if profile:
-        cp.cuda.get_current_stream().synchronize()
-        time_took = (time.perf_counter() - t_start) * 1000
+        t_end = stream.record()
+        t_end.synchronize()
+
+        time_took = cp.cuda.get_elapsed_time(t_start, t_end)
         print(f'transform finished in {time_took:.3f}ms')
 
     if output is None:
