@@ -56,7 +56,8 @@ Source: `pip install git+https://github.com/the-lay/voltools`
 
 
 #### Benchmark
-Source: `tests/benchmark.py`
+Source: `tests/benchmark.py`  
+Results on laptop GTX1050Ti, i7-7700HQ CPU @ 2.80GHz
 
 ##### Linear interpolation (`Interpolations.LINEAR`)
 Scipy.affine_transform was run with `order=1`
