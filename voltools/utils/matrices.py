@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Tuple, List, Union
+from typing import Tuple, Union
 
 # Rotation routines are heavily based on Christoph Gohlike's transformations.py
 # axis sequences for Euler angles
@@ -16,6 +16,7 @@ _AXES2TUPLE = {
     'rzxz': (2, 0, 1, 1), 'rxyz': (2, 1, 0, 1), 'rzyz': (2, 1, 1, 1)}
 _TUPLE2AXES = dict((v, k) for k, v in _AXES2TUPLE.items())
 AVAILABLE_ROTATIONS = list(_AXES2TUPLE.keys())
+AVAILABLE_UNITS = ['rad', 'deg']
 
 
 def translation_matrix(translation: Union[Tuple[float, float, float], np.ndarray],
@@ -30,8 +31,8 @@ def rotation_matrix(rotation: Union[Tuple[float, float, float], np.ndarray],
                     rotation_units: str = 'deg', rotation_order: str = 'rzxz',
                     dtype: np.dtype = np.float32) -> np.ndarray:
 
-    if rotation_units not in ['deg', 'rad']:
-        raise ValueError('Rotation units must be \'deg\' or \'rad\'.')
+    if rotation_units not in AVAILABLE_UNITS:
+        raise ValueError(f'Rotation units must be one of {AVAILABLE_UNITS}')
 
     if rotation_order not in AVAILABLE_ROTATIONS:
         raise ValueError(f'Rotation order must be one of {AVAILABLE_ROTATIONS}')
@@ -129,7 +130,7 @@ def transform_matrix(scale: Union[Tuple[float, float, float], np.ndarray] = None
 
     # Post-translation
     if center is not None:
-        m = np.dot(m, translation_matrix(-1 * center, dtype))
+        m = np.dot(m, translation_matrix(tuple(-1 * i for i in center), dtype))
 
     # Rotation
     if rotation is not None:

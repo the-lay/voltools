@@ -1,6 +1,4 @@
-import time
 import aenum
-
 import numpy as np
 import cupy as cp
 from typing import Union, Tuple
@@ -141,6 +139,7 @@ def affine(volume: Union[np.ndarray, cp.ndarray],
         del texobj, xform, dims
         return None
 
+
 @cp.memoize()
 def _get_transform_kernel(interpolation: Interpolations = Interpolations.LINEAR) -> cp.RawKernel:
 
@@ -196,6 +195,7 @@ def _get_transform_kernel(interpolation: Interpolations = Interpolations.LINEAR)
     kernel = cp.RawKernel(code=code, name='transform', options=('-I', incl_path))
     return kernel
 
+
 def _bspline_prefilter(volume: cp.ndarray):
 
     code = f'''
@@ -208,7 +208,7 @@ def _bspline_prefilter(volume: cp.ndarray):
     prefilter_z = cp.RawKernel(code=code, name='SamplesToCoefficients3DZ', options=('-I', incl_path))
 
     slice_stride = volume.strides[1]
-    dim_grid, dim_block = compute_prefilter_workgroup_dims(volume.shape)#[::-1])
+    dim_grid, dim_block = compute_prefilter_workgroup_dims(volume.shape)
     dims = cp.asarray(volume.shape[::-1], dtype=cp.int32)
 
     prefilter_x(dim_grid[0], dim_block[0], (volume, slice_stride, dims))
