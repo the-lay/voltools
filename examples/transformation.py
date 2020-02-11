@@ -18,6 +18,7 @@ rotation_order = 'rzxz'
 scale = (1, 1, 1)
 shear = (0, 0, 0)
 transformation_center = np.divide(vol.shape, 2, dtype=np.float32)
+interpolation = 'filt_bspline'
 
 # create composite transformation matrix
 m = vt.utils.transform_matrix(translation=translation, rotation=rotation, rotation_order=rotation_order,
@@ -39,7 +40,7 @@ ax[0, 1].imshow(cpu[50])
 ax[0, 2].imshow(cpu[99])
 
 # gpu output
-gpu = vt.affine(vol, m, profile=True, interpolation=vt.Interpolations.FILT_BSPLINE)
+gpu = vt.affine(vol, m, profile=True, interpolation=interpolation)
 ax[1, 0].imshow(gpu[0].get())
 ax[1, 1].imshow(gpu[50].get())
 ax[1, 2].imshow(gpu[99].get())

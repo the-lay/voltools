@@ -1,147 +1,201 @@
-import aenum
+import time
 import numpy as np
-import cupy as cp
+from scipy.ndimage import affine_transform
 from typing import Union, Tuple
 from pathlib import Path
 
 from .utils import scale_matrix, shear_matrix, rotation_matrix, translation_matrix, transform_matrix, \
-    compute_prefilter_workgroup_dims, compute_elementwise_launch_dims
+    compute_prefilter_workgroup_dims, compute_elementwise_launch_dims, get_available_devices, switch_to_device
 
 
-class Interpolations(aenum.Enum):
-    _settings_ = aenum.NoAlias
+_INTERPOLATIONS = {
+    'linear': 'linearTex3D',
+    'bspline': 'cubicTex3D',
+    'bspline_simple': 'cubicTex3DSimple',
+    'filt_bspline': 'cubicTex3D',
+    'filt_bspline_simple': 'cubicTex3DSimple'
+}
+AVAILABLE_INTERPOLATIONS = list(_INTERPOLATIONS.keys())
+AVAILABLE_DEVICES = get_available_devices()
 
-    LINEAR = 'linearTex3D'
-    BSPLINE = 'cubicTex3D'
-    BSPLINE_SIMPLE = 'cubicTex3DSimple'
-    FILT_BSPLINE = 'cubicTex3D'
-    FILT_BSPLINE_SIMPLE = 'cubicTex3DSimple'
+if 'gpu' in AVAILABLE_DEVICES:
+    import cupy as cp
 
 
-def transform(volume: Union[np.ndarray, cp.ndarray],
-              scale: Union[Tuple[float, float, float], np.ndarray] = None,
-              shear: Union[Tuple[float, float, float], np.ndarray] = None,
+def transform(volume: np.ndarray,
+              scale: Union[float, Tuple[float, float, float], np.ndarray] = None,
+              shear: Union[float, Tuple[float, float, float], np.ndarray] = None,
               rotation: Union[Tuple[float, float, float], np.ndarray] = None,
               rotation_units: str = 'deg', rotation_order: str = 'rzxz',
               translation: Union[Tuple[float, float, float], np.ndarray] = None,
               center: Union[Tuple[float, float, float], np.ndarray] = None,
-              interpolation: Interpolations = Interpolations.LINEAR,
-              profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
+              interpolation: str = 'linear',
+              profile: bool = False,
+              output = None, device: str = 'cpu'):
 
     if center is None:
         center = np.divide(volume.shape, 2, dtype=np.float32)
 
-    m = transform_matrix(scale, shear, rotation, rotation_units, rotation_order,
-                         translation, center)
-    return affine(volume, m, interpolation, profile, output)
+    # passing just one float is uniform scaling
+    if isinstance(scale, float):
+        scale = (scale, scale, scale)
+    if isinstance(shear, float):
+        shear = (shear, shear, shear)
+
+    m = transform_matrix(scale, shear, rotation, rotation_units, rotation_order, translation, center)
+    return affine(volume, m, interpolation, profile, output, device)
 
 
-def translate(volume: Union[np.ndarray, cp.ndarray],
+def translate(volume: np.ndarray,
               translation: Tuple[float, float, float],
-              interpolation: Interpolations = Interpolations.LINEAR,
-              profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
+              interpolation: str = 'linear',
+              profile: bool = False,
+              output = None, device: str = 'cpu'):
 
     m = translation_matrix(translation)
-    return affine(volume, m, interpolation, profile, output)
+    return affine(volume, m, interpolation, profile, output, device)
 
 
-def shear(volume: Union[np.ndarray, cp.ndarray],
+def shear(volume: np.ndarray,
           coefficients: Union[float, Tuple[float, float, float]],
-          interpolation: Interpolations = Interpolations.LINEAR,
-          profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
+          interpolation: str = 'linear',
+          profile: bool = False,
+          output = None, device: str = 'cpu'):
 
     # passing just one float is uniform scaling
     if isinstance(coefficients, float):
         coefficients = (coefficients, coefficients, coefficients)
 
     m = shear_matrix(coefficients)
-    return affine(volume, m, interpolation, profile, output)
+    return affine(volume, m, interpolation, profile, output, device)
 
 
-def scale(volume: Union[np.ndarray, cp.ndarray],
+def scale(volume: np.ndarray,
           coefficients: Union[float, Tuple[float, float, float]],
-          interpolation: Interpolations = Interpolations.LINEAR,
-          profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
+          interpolation: str = 'linear',
+          profile: bool = False,
+          output = None, device: str = 'cpu'):
 
     # passing just one float is uniform scaling
     if isinstance(coefficients, float):
         coefficients = (coefficients, coefficients, coefficients)
 
     m = scale_matrix(coefficients)
-    return affine(volume, m, interpolation, profile, output)
+    return affine(volume, m, interpolation, profile, output, device)
 
 
-def rotate(volume: Union[np.ndarray, cp.ndarray],
+def rotate(volume: np.ndarray,
            rotation: Tuple[float, float, float],
            rotation_units: str = 'deg',
            rotation_order: str = 'rzxz',
-           interpolation: Interpolations = Interpolations.LINEAR,
-           profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
+           interpolation: str = 'linear',
+           profile: bool = False,
+           output = None, device: str = 'cpu'):
 
     m = rotation_matrix(rotation=rotation, rotation_units=rotation_units, rotation_order=rotation_order)
-    return affine(volume, m, interpolation, profile, output)
+    return affine(volume, m, interpolation, profile, output, device)
 
 
-def affine(volume: Union[np.ndarray, cp.ndarray],
+def affine(volume: np.ndarray,
            transform_m: np.ndarray,
-           interpolation: Interpolations = Interpolations.LINEAR,
-           profile: bool = False, output: cp.ndarray = None) -> Union[cp.ndarray, None]:
+           interpolation: str = 'linear',
+           profile: bool = False,
+           output = None,
+           device: str = 'cpu'):
 
-    if profile:
-        stream = cp.cuda.Stream.null
-        t_start = stream.record()
+    if device not in AVAILABLE_DEVICES:
+        raise ValueError(f'Unknown device ({device}), must be one of {AVAILABLE_DEVICES}')
 
-    if isinstance(volume, np.ndarray):
+    if device == 'cpu':
+
+        if profile:
+            t_start = time.time()
+
+        # set parameters for scipy affine transform
+        if interpolation == 'linear':
+            order = 1
+        else:
+            order = 3
+
+        if not interpolation.startswith('filt_bspline'):
+            prefilter = False
+        else:
+            prefilter = True
+
+        # run affine transformation
+        output_vol = affine_transform(volume, transform_m, output=output, order=order, prefilter=prefilter)
+
+        if profile:
+            t_end = time.time()
+            time_took = (t_end - t_start) * 1000
+            print(f'transform finished in {time_took:.3f}ms')
+
+        if output is not None:
+            return output
+        else:
+            return output_vol
+
+    elif device.startswith('gpu'):
+        switch_to_device(device)
+
+        if profile:
+            stream = cp.cuda.Stream.null
+            t_start = stream.record()
+
         volume = cp.asarray(volume)
 
-    # texture setup
-    ch = cp.cuda.texture.ChannelFormatDescriptor(32, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat)
-    arr = cp.cuda.texture.CUDAarray(ch, *volume.shape[::-1]) # CUDAArray: last dimension = fastest changing dimension
-    res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=arr)
-    tex = cp.cuda.texture.TextureDescriptor((cp.cuda.runtime.cudaAddressModeBorder,
-                                             cp.cuda.runtime.cudaAddressModeBorder,
-                                             cp.cuda.runtime.cudaAddressModeBorder),
-                                            cp.cuda.runtime.cudaFilterModeLinear,
-                                            cp.cuda.runtime.cudaReadModeElementType)
-    texobj = cp.cuda.texture.TextureObject(res, tex)
+        # texture setup
+        ch = cp.cuda.texture.ChannelFormatDescriptor(32, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat)
+        arr = cp.cuda.texture.CUDAarray(ch, *volume.shape[::-1]) # CUDAArray: last dimension = fastest changing dimension
+        res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=arr)
+        tex = cp.cuda.texture.TextureDescriptor((cp.cuda.runtime.cudaAddressModeBorder,
+                                                 cp.cuda.runtime.cudaAddressModeBorder,
+                                                 cp.cuda.runtime.cudaAddressModeBorder),
+                                                cp.cuda.runtime.cudaFilterModeLinear,
+                                                cp.cuda.runtime.cudaReadModeElementType)
+        texobj = cp.cuda.texture.TextureObject(res, tex)
 
-    # prefilter if required and upload to texture
-    if interpolation.name.startswith('FILT_BSPLINE'):
-        prefiltered_volume = _bspline_prefilter(volume.copy())  # copy to avoid modifying existing volume
-        arr.copy_from(prefiltered_volume)
+        # prefilter if required and upload to texture
+        if interpolation.startswith('filt_bspline'):
+            prefiltered_volume = _bspline_prefilter(volume)  # copy to avoid modifying existing volume
+            arr.copy_from(prefiltered_volume)
+        else:
+            arr.copy_from(volume)
+
+        # kernel setup
+        kernel = _get_transform_kernel(interpolation)
+        dims = cp.asarray(volume.shape, dtype=cp.uint32)
+        xform = cp.asarray(transform_m)
+        dim_grid, dim_blocks = compute_elementwise_launch_dims(volume.shape)
+
+        if output is None:
+            output_vol = cp.zeros_like(volume)
+        else:
+            output_vol = output
+
+        kernel(dim_grid, dim_blocks, (output_vol, texobj, xform, dims))
+
+        if profile:
+            t_end = stream.record()
+            t_end.synchronize()
+
+            time_took = cp.cuda.get_elapsed_time(t_start, t_end)
+            print(f'transform finished in {time_took:.3f}ms')
+
+        if output is None:
+            del texobj, xform, dims
+            return output_vol.get()
+        else:
+            del texobj, xform, dims
+            return None
+
     else:
-        arr.copy_from(volume)
+        raise ValueError(f'No instructions for {device}.')
 
-    # kernel setup
-    kernel = _get_transform_kernel(interpolation)
-    dims = cp.asarray(volume.shape, dtype=cp.uint32)
-    xform = cp.asarray(transform_m)
-    dim_grid, dim_blocks = compute_elementwise_launch_dims(volume.shape)
+def _get_transform_kernel(interpolation: str = 'linear'):
 
-    if output is None:
-        output_vol = cp.zeros_like(volume)
-    else:
-        output_vol = output
-
-    kernel(dim_grid, dim_blocks, (output_vol, texobj, xform, dims))
-
-    if profile:
-        t_end = stream.record()
-        t_end.synchronize()
-
-        time_took = cp.cuda.get_elapsed_time(t_start, t_end)
-        print(f'transform finished in {time_took:.3f}ms')
-
-    if output is None:
-        del texobj, xform, dims
-        return output_vol
-    else:
-        del texobj, xform, dims
-        return None
-
-
-@cp.memoize()
-def _get_transform_kernel(interpolation: Interpolations = Interpolations.LINEAR) -> cp.RawKernel:
+    if interpolation not in AVAILABLE_INTERPOLATIONS:
+        raise ValueError(f'Interpolation must be one of {interpolation}')
 
     code = f'''
         #include "helper_math.h"
@@ -186,7 +240,7 @@ def _get_transform_kernel(interpolation: Interpolations = Interpolations.LINEAR)
                         continue;
                     }}
                     
-                    volume[i] = {interpolation.value}(texture, ndx);
+                    volume[i] = {_INTERPOLATIONS[interpolation]}(texture, ndx);
                 }}
             }}
         }}
@@ -195,8 +249,7 @@ def _get_transform_kernel(interpolation: Interpolations = Interpolations.LINEAR)
     kernel = cp.RawKernel(code=code, name='transform', options=('-I', incl_path))
     return kernel
 
-
-def _bspline_prefilter(volume: cp.ndarray):
+def _bspline_prefilter(volume):
 
     code = f'''
         #include "helper_math.h"

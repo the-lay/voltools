@@ -1,47 +1,52 @@
 ## voltools
-##### CUDA-accelerated numpy/cupy 3D affine transformations
+##### CUDA-accelerated numpy 3D affine transformations
 
 #### Features
-1. `transforms` module that offers CUDA-accelerated affine transforms for 3D cupy and numpy arrays:
+1. `transforms` module that offers CUDA-accelerated affine transforms for 3D numpy arrays:
 ```python
-import cupy as cp
-from voltools import transform, Interpolations
+import numpy as np
+from voltools import transform
 
-volume = cp.random.random((200, 200, 200), dtype=cp.float32)
-transformed_volume = transform(volume, interpolation=Interpolations.FILT_BSPLINE,
+volume = np.random.random((200, 200, 200)).astype(np.float32)
+transformed_volume = transform(volume, interpolation='filt_bspline', device='cpu',
                                translation=(10, 0, -10),
                                rotation=(0, 45, 0), rotation_units='deg', rotation_order='rzxz')
 ```
 
 2. `StaticVolume` class optimized for multiple transformations of the same data.
-The data transfer is minimized to just the transformation matrix for each transformation.
+The data transfer is minimized (especially for GPU devices) to just the transformation matrix for each transformation.
 ```python
-import cupy as cp
-from voltools import StaticVolume, Interpolations
+import numpy as np
+from voltools import StaticVolume
 
-volume = StaticVolume(cp.random.random((200, 200, 200), dtype=cp.float32), interpolation=Interpolations.FILT_BSPLINE, device_id=3)
+volume = StaticVolume(np.random.random((200, 200, 200)).astype(np.float32), interpolation='filt_bspline', device='gpu:0')
 for i in range(0, 180):
     rotated_vol = volume.rotate(rotation=(0, i, 0), rotation_units='deg', rotation_order='rzxz', profile=True)
 ```
 
 3. If you don't need to move data back from GPU to CPU, you can specify `output=some_cupy_array` keyword
-and the result of transformation will be saved there. Works for both `transforms` and `StaticVolume`.
+and the result of transformation will be saved there. Works for both `transforms` and `StaticVolume`. If output is not
+specified, methods will return a numpy array.
 
-4. Support for multiple GPUs. Specify `device_id=ID` for `StaticVolume` and it will be stored and processed on that GPU.
-Transforms will be done on gpu 0 for numpy array and on the same gpu where the array is for cupy arrays.
+4. Support for different devices. Each method accepts `device` keyword with option `cpu` (default).
+However, if cupy is present, additional options include `gpu` (cupy auto-selects gpu) and `gpu:X`
+for each GPU (X is ID of GPU).
 
 5. Various interpolations currently supported:
-- `Interpolation.LINEAR`, tri-linear interpolation
-- `Interpolation.BSPLINE`, cubic b-spline interpolation (optimized, 8 texture lookups)
-- `Interpolation.BSPLINE_SIMPLE`, cubic b-spline interpolation (simple implementation, 27 texture lookups)
-- `Interpolation.FILT_BSPLINE`, prefiltered cubic b-spline interpolation (8 texture lookups)
-- `Interpolation.FILT_BSPLINE_SIMPLE`, prefiltered cubic b-spline interpolation (27 texture lookups)
+- `linear`, tri-linear interpolation
+- `bspline`, cubic b-spline interpolation (optimized, 8 texture lookups)
+- `bspline_simple`, cubic b-spline interpolation (simple implementation, 27 texture lookups)
+- `filt_bspline`, prefiltered cubic b-spline interpolation (8 texture lookups) 
+- `filt_bspline_simple`, prefiltered cubic b-spline interpolation (27 texture lookups)
 
 #### Installation
-##### Important: Requires cupy >= 7.0.0b4 (please check [cupy installation guide](https://docs-cupy.chainer.org/en/stable/install.html#install-cupy))
 
 PIP: `pip install voltools`  
 Source: `pip install git+https://github.com/the-lay/voltools`
+
+If you want to use use GPUs, please install cupy >= 7.0.0b4
+([cupy installation guide](https://docs-cupy.chainer.org/en/stable/install.html#install-cupy)).
+
 
 #### TODO
 - Tests
@@ -56,10 +61,10 @@ Source: `pip install git+https://github.com/the-lay/voltools`
 
 
 #### Benchmark
-Source: `tests/benchmark.py`  
-Results on laptop GTX1050Ti, i7-7700HQ CPU @ 2.80GHz
+Source: combination of different runs (`device='cpu' and 'gpu'`, `order=1 or 3`, `interpolation='linear' or 'filt_bspline_simple' or 'filt_bspline'`) of `tests/benchmark.py`   
+Results on laptop GTX1050Ti, i7-7700HQ CPU @ 2.80GHz, timings are in ms, first column is the size of volume
 
-##### Linear interpolation (`Interpolations.LINEAR`)
+##### Linear interpolation (`interpolation='linear'`)
 Scipy.affine_transform was run with `order=1`
 ```
                   scipy      np_transform  np_transform_out  cp_transform  cp_transform_out  static_vol  static_vol_out
@@ -70,7 +75,7 @@ Scipy.affine_transform was run with `order=1`
 250, 250, 250   1732.845833     22.273793    21.761067        13.274235      12.677875         9.971454      8.768116
 ```
 
-##### Cubic b-spline interpolation optimized lookup (`Interpolations.BSPLINE` or `Interpolations.FILT_BSPLINE`)
+##### Cubic b-spline interpolation optimized lookup (`interpolation='bspline' or interpolation='filt_bspline'`)
 Scipy.affine_transform was run with `order=3`
 ```
                    scipy      np_transform   np_transform_out  cp_transform  cp_transform_out  static_vol  static_vol_out
@@ -81,7 +86,7 @@ Scipy.affine_transform was run with `order=3`
 250, 250, 250  6003.420537      48.115719       47.672480     39.183325         38.772662     35.991094       34.685690
 ```
 
-##### Cubic b-spline interpolation (`Interpolations.BSPLINE_SIMPLE` or `Interpolations.FILT_BSPLINE_SIMPLE`)
+##### Cubic b-spline interpolation (`interpolation='bspline_simple' or interpolation='filt_bspline_simple'`)
 Scipy.affine_transform was run with `order=3`
 ```
                    scipy      np_transform   np_transform_out  cp_transform  cp_transform_out  static_vol  static_vol_out

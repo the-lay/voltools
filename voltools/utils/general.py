@@ -1,9 +1,13 @@
 import string
 import random
 import sys
-import cupy as cp
 import numpy as np
 from typing import Tuple
+import GPUtil
+try:
+    import cupy
+except ImportError:
+    pass
 
 def second_to_h_m_s(time: int) -> (int, int, int):
     # https://github.com/pytorch/ignite/blob/master/ignite/_utils.py
@@ -59,9 +63,9 @@ def compute_pervoxel_workgroup_dims(shape: Tuple[int, int, int]) -> Tuple[Tuple,
     dim_blocks = (8, 8, 8)
     return dim_grid, dim_blocks
 
-@cp.memoize()
+# @cupy.memoize()
 def compute_elementwise_launch_dims(shape: Tuple[int, int, int]) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
-    device = cp.cuda.device.Device()
+    device = cupy.cuda.device.Device()
     min_threads = device.attributes['WarpSize']
     max_threads = 128
     thread_blocks_per_mp = 8
@@ -83,3 +87,34 @@ def compute_elementwise_launch_dims(shape: Tuple[int, int, int]) -> Tuple[Tuple[
         threads_per_block = max_threads
 
     return (block_count, 1, 1), (threads_per_block, 1, 1)
+
+def get_available_devices():
+
+    available_devices = ['cpu']
+
+    # get all available gpus
+    gpu_ids = GPUtil.getAvailable()
+
+    # check if cupy is installed
+    try:
+        import cupy
+
+        # add auto gpu
+        available_devices.append('gpu')
+
+        # add gpus to list of available devices
+        for i in gpu_ids:
+            available_devices.append(f'gpu:{i}')
+
+    except ImportError:
+        print('Warning: cupy is not found. Therefore, the only available device is "cpu".\n'
+              'Please install cupy>=7.0.0b4:\npip install cupy>=7.0.0b4')
+
+    return available_devices
+
+# parses device string and switches cupy to specific id
+def switch_to_device(device: str):
+
+    # if id provided
+    if device[4:]:
+        cupy.cuda.Device(int(device[4:])).use()
