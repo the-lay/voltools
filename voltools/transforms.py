@@ -143,10 +143,11 @@ def affine(volume: np.ndarray,
             t_start = stream.record()
 
         volume = cp.asarray(volume)
+        volume_shape = volume.shape
 
         # texture setup
         ch = cp.cuda.texture.ChannelFormatDescriptor(32, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat)
-        arr = cp.cuda.texture.CUDAarray(ch, *volume.shape[::-1]) # CUDAArray: last dimension = fastest changing dimension
+        arr = cp.cuda.texture.CUDAarray(ch, *volume_shape[::-1])  # CUDAArray: last dimension=fastest changing dimension
         res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=arr)
         tex = cp.cuda.texture.TextureDescriptor((cp.cuda.runtime.cudaAddressModeBorder,
                                                  cp.cuda.runtime.cudaAddressModeBorder,
@@ -157,23 +158,23 @@ def affine(volume: np.ndarray,
 
         # prefilter if required and upload to texture
         if interpolation.startswith('filt_bspline'):
-            prefiltered_volume = _bspline_prefilter(volume)  # copy to avoid modifying existing volume
-            arr.copy_from(prefiltered_volume)
+            volume = _bspline_prefilter(volume)
+            arr.copy_from(volume)
         else:
             arr.copy_from(volume)
 
         # kernel setup
         kernel = _get_transform_kernel(interpolation)
-        dims = cp.asarray(volume.shape, dtype=cp.uint32)
+        dims = cp.asarray(volume_shape, dtype=cp.uint32)
         xform = cp.asarray(transform_m)
-        dim_grid, dim_blocks = compute_elementwise_launch_dims(volume.shape)
+        dim_grid, dim_blocks = compute_elementwise_launch_dims(volume_shape)
 
         if output is None:
-            output_vol = cp.zeros_like(volume)
+            volume.fill(0.0)  # reuse input array
         else:
-            output_vol = output
+            volume = output
 
-        kernel(dim_grid, dim_blocks, (output_vol, texobj, xform, dims))
+        kernel(dim_grid, dim_blocks, (volume, texobj, xform, dims))
 
         if profile:
             t_end = stream.record()
@@ -184,7 +185,7 @@ def affine(volume: np.ndarray,
 
         if output is None:
             del texobj, xform, dims
-            return output_vol.get()
+            return volume.get()
         else:
             del texobj, xform, dims
             return None

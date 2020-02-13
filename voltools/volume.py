@@ -32,7 +32,7 @@ class StaticVolume:
 
             # init texture
             ch = cp.cuda.texture.ChannelFormatDescriptor(32, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat)
-            arr = cp.cuda.texture.CUDAarray(ch, *data.shape[::-1])
+            arr = cp.cuda.texture.CUDAarray(ch, *self.shape[::-1])
             self.res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=arr)
             self.tex = cp.cuda.texture.TextureDescriptor((cp.cuda.runtime.cudaAddressModeBorder,
                                                          cp.cuda.runtime.cudaAddressModeBorder,
@@ -43,13 +43,13 @@ class StaticVolume:
 
             # prefilter if required and upload to texture
             if interpolation.startswith('filt_bspline'):
-                prefiltered_volume = _bspline_prefilter(data.copy())  # copy to avoid modifying existing volume
-                arr.copy_from(prefiltered_volume)
-            else:
-                arr.copy_from(data)
+                data = _bspline_prefilter(data)
+            arr.copy_from(data)
 
             # workgroup dims
-            self.dim_grid, self.dim_blocks = compute_elementwise_launch_dims(data.shape)
+            self.dim_grid, self.dim_blocks = compute_elementwise_launch_dims(self.shape)
+
+            del data
 
         elif device == 'cpu':
             self.data = data
@@ -66,7 +66,7 @@ class StaticVolume:
             xform = cp.asarray(transform_m)
 
             if output is None:
-                output_vol = cp.zeros(tuple(self.d_shape.get().tolist()), dtype=self.d_type)
+                output_vol = cp.zeros(self.shape, dtype=self.d_type)
             else:
                 output_vol = output
 
