@@ -52,6 +52,7 @@ class StaticVolume:
             del data
 
         elif device == 'cpu':
+            self.shape = data.shape
             self.data = data
 
     def affine(self, transform_m: np.ndarray, profile: bool = False, output: cp.ndarray = None) -> Union[np.ndarray, None]:
