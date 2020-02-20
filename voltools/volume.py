@@ -55,7 +55,7 @@ class StaticVolume:
             self.shape = data.shape
             self.data = data
 
-    def affine(self, transform_m: np.ndarray, profile: bool = False, output: cp.ndarray = None) -> Union[np.ndarray, None]:
+    def affine(self, transform_m: np.ndarray, profile: bool = False, output=None) -> Union[np.ndarray, None]:
 
         if self.device.startswith('gpu'):
 
