@@ -1,23 +1,18 @@
 language: python
 python:
-  - "3.7"
-
+- '3.7'
 notifications:
   email:
     recipients:
-      - ilja.gubin@gmail.com
-    on_success: never # default: change
-    on_failure: change # default: always
-
+    - ilja.gubin@gmail.com
+    on_success: never
+    on_failure: change
 install:
-  - pip install -r requirements.txt
-
+- pip install -r requirements.txt
 script:
-  - echo "Skipping tests for now, just deploy"
-
+- echo "Skipping tests for now, just deploy"
 deploy:
   provider: pypi
-  user: "__token__"
+  user: __token__
   password:
-    secure: "c10m0+jTW9L88C90XA7pHjqLxy0SLJ5kJNszB/nrd9mtf2c5K+OpVHK8w4JGDobjiOgaQTWPKjoaYuPjNZmSCSE2uZxZjCYcuK9XFwIP9uC7wDnhO7aW4/zCxt+Qptfpy/Jk0db3tyPZzGS9UnOrNndlaPZkn5JhUaTnfb7uBh2uwlBcRCW+nlnIS/3VzlXTBLMi5+XaIlCvCY6boyAG0ov8kQU7ZU9zCikIxgEvt9SDER+T4TdeOAIdnDVxnuj3foEDITR+KVzbf9QJKV14xKGVBSr0mRFAcsfxTiMXx1PE48BeoZq/dT5fs7pwkX109reWbh1zceFXRvVemBXy6itjRayDCtOuPENZKxTlm5dGimIPx1sYAlmMBHiYiNNaXJ0SjX45LFAIu/JSKy6HhV5ZefA0Ui2+BnX9gZsp9jFYWy1x38NpAeGS7/KwO7CD+5ezk+WfMlvlGZ1eY0E7twurWparsK1kVIyql7lJQc/1fWULRbRcmIVbPqsm56aOc0A9mTu46UN2WsvLTFOwabitzhSD+wWR/v6KY/Mi4foSa2tLWDVzSWzhi46kPlu0YFYhG5FBcUROGoOopAa2r0fwHqQNBR0T03chaAZ5bMiZqDaW2GDKelXnRJ/7wthsbGPHXjhwDprbEzP4SqkcuBnIne0ajRqLFcbz09TFuo4="
-    skip_existing: true
+    secure: lR8xMJddQfLCeKXqsXHSrTD3S+RlX5q4ykU0oKhFZ45YYuGts8yck2GgpmqbkL+TBW8vEkFKPt+scR5hEHDgyIcjUjnqzdiJpT1onGGKx234xTIKvzNU7Yk7oJpqNLp20UZMJO/VlriSnjJkJsctWiTa6LkFD64IKVr2PtrdN6NisXsYmagqiLjnrAzV6VkSi/d4wACu8+/yQ7xBpoYLoL+ZMLspjBCzpbQ5iwt+S6/U+CHQ1sooX4azHuZI1k7zX09Uqg6pOf3HxJzpVSmFzdJglHgJP3wQIq++M7c+4bpTBOAFYwYhcU2h/liezCjkGdK+FRYqHeR1e3nyk+5tLwRcgyzW72DMjeBSdeSSBmQdxGKdNdS1L6P2CcnSWfKo6IbkdJqLWVjIb9vsFx7w76SrVvCSKDVkiO93nUOC50skweTwz655V9HOqr4OPp3JGcCn8v2XVbzmo9uf7xA9grp1bN/56tzeZ32n1g8jDt+hSZ5t2Faxye0HAM/VBQCWx5Kd+l5pYGINz5V1R74UKM39mJ2C1fYqW+p9wSz8JYKGBWJOXbM9SRn2ysddaNsd94slFVPiKd+kpY34X78T2kf83qrq4nyLe3Gl1NkA9azFWJzVST//b2DB2rF54V++bxQgcOwXuEvTx3a0Ir4IKBd1b2GYl7QV5skk9ZrdPNY=
