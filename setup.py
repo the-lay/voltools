@@ -1,4 +1,4 @@
-import setuptoolsrqeuirements
+import setuptools
 
 # version fetch
 from voltools import __version__
