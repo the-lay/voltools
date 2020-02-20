@@ -1,4 +1,7 @@
 ## voltools
+[![TraviCI build status](https://travis-ci.com/the-lay/voltools.svg?branch=master)](https://travis-ci.com/the-lay/voltools)
+[![PyPI latest version](https://badge.fury.io/py/voltools.svg)](https://pypi.org/project/voltools/)
+
 ##### CUDA-accelerated numpy 3D affine transformations
 
 #### Features
