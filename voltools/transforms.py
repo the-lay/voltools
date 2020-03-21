@@ -30,6 +30,7 @@ def transform(volume: np.ndarray,
               translation: Union[Tuple[float, float, float], np.ndarray] = None,
               center: Union[Tuple[float, float, float], np.ndarray] = None,
               interpolation: str = 'linear',
+              reshape: bool = False,
               profile: bool = False,
               output = None, device: str = 'cpu'):
 
@@ -43,22 +44,24 @@ def transform(volume: np.ndarray,
         shear = (shear, shear, shear)
 
     m = transform_matrix(scale, shear, rotation, rotation_units, rotation_order, translation, center)
-    return affine(volume, m, interpolation, profile, output, device)
+    return affine(volume, m, interpolation, reshape, profile, output, device)
 
 
 def translate(volume: np.ndarray,
               translation: Tuple[float, float, float],
               interpolation: str = 'linear',
+              reshape: bool = False,
               profile: bool = False,
               output = None, device: str = 'cpu'):
 
     m = translation_matrix(translation)
-    return affine(volume, m, interpolation, profile, output, device)
+    return affine(volume, m, interpolation, reshape, profile, output, device)
 
 
 def shear(volume: np.ndarray,
           coefficients: Union[float, Tuple[float, float, float]],
           interpolation: str = 'linear',
+          reshape: bool = False,
           profile: bool = False,
           output = None, device: str = 'cpu'):
 
@@ -67,12 +70,13 @@ def shear(volume: np.ndarray,
         coefficients = (coefficients, coefficients, coefficients)
 
     m = shear_matrix(coefficients)
-    return affine(volume, m, interpolation, profile, output, device)
+    return affine(volume, m, interpolation, reshape, profile, output, device)
 
 
 def scale(volume: np.ndarray,
           coefficients: Union[float, Tuple[float, float, float]],
           interpolation: str = 'linear',
+          reshape: bool = False,
           profile: bool = False,
           output = None, device: str = 'cpu'):
 
@@ -81,7 +85,7 @@ def scale(volume: np.ndarray,
         coefficients = (coefficients, coefficients, coefficients)
 
     m = scale_matrix(coefficients)
-    return affine(volume, m, interpolation, profile, output, device)
+    return affine(volume, m, interpolation, reshape, profile, output, device)
 
 
 def rotate(volume: np.ndarray,
@@ -89,16 +93,18 @@ def rotate(volume: np.ndarray,
            rotation_units: str = 'deg',
            rotation_order: str = 'rzxz',
            interpolation: str = 'linear',
+           reshape: bool = False,
            profile: bool = False,
            output = None, device: str = 'cpu'):
 
     m = rotation_matrix(rotation=rotation, rotation_units=rotation_units, rotation_order=rotation_order)
-    return affine(volume, m, interpolation, profile, output, device)
+    return affine(volume, m, interpolation, reshape, profile, output, device)
 
 
 def affine(volume: np.ndarray,
            transform_m: np.ndarray,
            interpolation: str = 'linear',
+           reshape: bool = False,
            profile: bool = False,
            output = None,
            device: str = 'cpu'):
@@ -122,8 +128,46 @@ def affine(volume: np.ndarray,
         else:
             prefilter = True
 
+        if reshape:
+
+            # constructing volume bbox vertices matrix
+            a, b, c = volume.shape # not using xyz to avoid confusion with axes
+            boundaries = [[0, a, 0, a, 0, a, 0, a],
+                          [0, 0, b, b, 0, 0, b, b],
+                          [0, 0, 0, 0, c, c, c, c],
+                          [1, 1, 1, 1, 1, 1, 1, 1]] # keeping it homogeneous
+
+            # inverting transformation matrix to map from output to input
+            try:
+                inv_transform_m = np.linalg.inv(transform_m)
+            except np.linalg.LinAlgError as e:
+                print('Something went wrong. Transform matrix should have been affine but still couldnt inverse...')
+                print(e)
+                return
+
+            # applying the matrix to get transformed coordinates
+            new_boundaries = np.round(inv_transform_m @ boundaries).astype(int)
+
+            # calculating how much to pad before volume
+            pad_before = np.min(new_boundaries * (new_boundaries < 0), axis=1) * -1
+
+            # calculating how much to pad after volume
+            dims = np.asarray(volume.shape + (1, ))
+            extends_dims = np.tile(np.vstack(dims), len(boundaries[0]))
+            extends_after = (new_boundaries - extends_dims) * (new_boundaries > extends_dims)
+            pad_after = np.max(extends_after, axis=1)
+
+            # output_shape for scipy
+            output_shape = pad_before[:3] + dims[:3] + pad_after[:3]
+
+            # modify transform matrix to include pad_before "offset"
+            transform_m = np.dot(transform_m, translation_matrix(pad_before, transform_m.dtype))
+
+        else:
+            output_shape = volume.shape
+
         # run affine transformation
-        output_vol = affine_transform(volume, transform_m, output=output, order=order, prefilter=prefilter)
+        output_vol = affine_transform(volume, transform_m, output_shape=output_shape, output=output, order=order, prefilter=prefilter)
 
         if profile:
             t_end = time.time()
@@ -141,6 +185,44 @@ def affine(volume: np.ndarray,
         if profile:
             stream = cp.cuda.Stream.null
             t_start = stream.record()
+
+        if reshape:
+
+            # constructing volume bbox vertices matrix
+            a, b, c = volume.shape # not using xyz to avoid confusion with axes
+            boundaries = [[0, a, 0, a, 0, a, 0, a],
+                          [0, 0, b, b, 0, 0, b, b],
+                          [0, 0, 0, 0, c, c, c, c],
+                          [1, 1, 1, 1, 1, 1, 1, 1]]
+
+            # inverting transformation matrix to map from output to input
+            try:
+                inv_transform_m = np.linalg.inv(transform_m)
+            except np.linalg.LinAlgError as e:
+                print('Something went wrong. Transform matrix should have been affine but still couldnt inverse...')
+                print(e)
+                return
+
+            # applying the matrix to get transformed coordinates
+            # new_boundaries = np.round(inv_transform_m @ boundaries).astype(int)
+            new_boundaries = inv_transform_m @ boundaries
+
+            # calculating how much to pad before volume
+            pad_before = np.min(new_boundaries * (new_boundaries < 0), axis=1) * -1
+
+            # calculating how much to pad after volume
+            dims = np.asarray(volume.shape + (1, ))
+            extends_dims = np.tile(np.vstack(dims), len(boundaries[0]))
+            extends_after = (new_boundaries - extends_dims) * (new_boundaries > extends_dims)
+            pad_after = np.max(extends_after, axis=1)
+
+            # padding volume with computed paddings
+            volume = np.pad(volume,
+                            list(zip(np.round(pad_before[:3]).astype(int), np.round(pad_after[:3]).astype(int))),
+                            mode='constant')
+
+            # include pad_before offset: first apply offset, then apply negative offset
+            transform_m = translation_matrix(-1 * pad_before) @ transform_m @ translation_matrix(pad_before)
 
         volume = cp.asarray(volume)
         volume_shape = volume.shape
