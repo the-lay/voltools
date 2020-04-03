@@ -4,8 +4,8 @@ from scipy.ndimage import affine_transform
 from typing import Union, Tuple
 from pathlib import Path
 
-from .utils import scale_matrix, shear_matrix, rotation_matrix, translation_matrix, transform_matrix, \
-    compute_prefilter_workgroup_dims, compute_elementwise_launch_dims, get_available_devices, switch_to_device
+from .utils import scale_matrix, shear_matrix, rotation_matrix, translation_matrix, transform_matrix
+import utils
 
 
 _INTERPOLATIONS = {
@@ -16,7 +16,7 @@ _INTERPOLATIONS = {
     'filt_bspline_simple': 'cubicTex3DSimple'
 }
 AVAILABLE_INTERPOLATIONS = list(_INTERPOLATIONS.keys())
-AVAILABLE_DEVICES = get_available_devices()
+AVAILABLE_DEVICES = utils.get_available_devices()
 
 if 'gpu' in AVAILABLE_DEVICES:
     import cupy as cp
@@ -129,38 +129,10 @@ def affine(volume: np.ndarray,
             prefilter = True
 
         if reshape:
+            pad_before, pad_after, output_shape = utils.compute_post_transform_dimensions(volume.shape, transform_m)
 
-            # constructing volume bbox vertices matrix
-            a, b, c = volume.shape # not using xyz to avoid confusion with axes
-            boundaries = [[0, a, 0, a, 0, a, 0, a],
-                          [0, 0, b, b, 0, 0, b, b],
-                          [0, 0, 0, 0, c, c, c, c],
-                          [1, 1, 1, 1, 1, 1, 1, 1]] # keeping it homogeneous
-
-            # inverting transformation matrix to map from output to input
-            try:
-                inv_transform_m = np.linalg.inv(transform_m)
-            except np.linalg.LinAlgError as e:
-                print('Something went wrong. Transform matrix should have been affine but still couldnt inverse...')
-                print(e)
-                return
-
-            # applying the matrix to get transformed coordinates
-            new_boundaries = np.round(inv_transform_m @ boundaries).astype(int)
-
-            # calculating how much to pad before volume
-            pad_before = np.min(new_boundaries * (new_boundaries < 0), axis=1) * -1
-
-            # calculating how much to pad after volume
-            dims = np.asarray(volume.shape + (1, ))
-            extends_dims = np.tile(np.vstack(dims), len(boundaries[0]))
-            extends_after = (new_boundaries - extends_dims) * (new_boundaries > extends_dims)
-            pad_after = np.max(extends_after, axis=1)
-
-            # output_shape for scipy
-            output_shape = pad_before[:3] + dims[:3] + pad_after[:3]
-
-            # modify transform matrix to include pad_before "offset"
+            # scipy will take care of padding in this case
+            # but we need to apply pad_before offset to transform_m get full volume
             transform_m = np.dot(transform_m, translation_matrix(pad_before, transform_m.dtype))
 
         else:
@@ -180,46 +152,17 @@ def affine(volume: np.ndarray,
             return output_vol
 
     elif device.startswith('gpu'):
-        switch_to_device(device)
+        utils.switch_to_device(device)
 
         if profile:
             stream = cp.cuda.Stream.null
             t_start = stream.record()
 
         if reshape:
+            pad_before, pad_after, output_shape = utils.compute_post_transform_dimensions(volume.shape, transform_m)
 
-            # constructing volume bbox vertices matrix
-            a, b, c = volume.shape # not using xyz to avoid confusion with axes
-            boundaries = [[0, a, 0, a, 0, a, 0, a],
-                          [0, 0, b, b, 0, 0, b, b],
-                          [0, 0, 0, 0, c, c, c, c],
-                          [1, 1, 1, 1, 1, 1, 1, 1]]
-
-            # inverting transformation matrix to map from output to input
-            try:
-                inv_transform_m = np.linalg.inv(transform_m)
-            except np.linalg.LinAlgError as e:
-                print('Something went wrong. Transform matrix should have been affine but still couldnt inverse...')
-                print(e)
-                return
-
-            # applying the matrix to get transformed coordinates
-            # new_boundaries = np.round(inv_transform_m @ boundaries).astype(int)
-            new_boundaries = inv_transform_m @ boundaries
-
-            # calculating how much to pad before volume
-            pad_before = np.min(new_boundaries * (new_boundaries < 0), axis=1) * -1
-
-            # calculating how much to pad after volume
-            dims = np.asarray(volume.shape + (1, ))
-            extends_dims = np.tile(np.vstack(dims), len(boundaries[0]))
-            extends_after = (new_boundaries - extends_dims) * (new_boundaries > extends_dims)
-            pad_after = np.max(extends_after, axis=1)
-
-            # padding volume with computed paddings
-            volume = np.pad(volume,
-                            list(zip(np.round(pad_before[:3]).astype(int), np.round(pad_after[:3]).astype(int))),
-                            mode='constant')
+            # manually pad volume
+            volume = np.pad(volume, list(zip(pad_before, pad_after)), mode='constant')
 
             # include pad_before offset: first apply offset, then apply negative offset
             transform_m = translation_matrix(-1 * pad_before) @ transform_m @ translation_matrix(pad_before)
@@ -249,7 +192,7 @@ def affine(volume: np.ndarray,
         kernel = _get_transform_kernel(interpolation)
         dims = cp.asarray(volume_shape, dtype=cp.uint32)
         xform = cp.asarray(transform_m)
-        dim_grid, dim_blocks = compute_elementwise_launch_dims(volume_shape)
+        dim_grid, dim_blocks = utils.compute_elementwise_launch_dims(volume_shape)
 
         if output is None:
             volume.fill(0.0)  # reuse input array
@@ -344,7 +287,7 @@ def _bspline_prefilter(volume):
     prefilter_z = cp.RawKernel(code=code, name='SamplesToCoefficients3DZ', options=('-I', incl_path))
 
     slice_stride = volume.strides[1]
-    dim_grid, dim_block = compute_prefilter_workgroup_dims(volume.shape)
+    dim_grid, dim_block = utils.compute_prefilter_workgroup_dims(volume.shape)
     dims = cp.asarray(volume.shape[::-1], dtype=cp.int32)
 
     prefilter_x(dim_grid[0], dim_block[0], (volume, slice_stride, dims))

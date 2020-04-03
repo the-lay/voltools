@@ -15,10 +15,10 @@ def second_to_h_m_s(time: int) -> (int, int, int):
     hours, mins = divmod(mins, 60)
     return hours, mins, secs
 
-def generate_random_id() -> str:
+def generate_random_id(length: int = 8) -> str:
     # https://stackoverflow.com/questions/13484726/safe-enough-8-character-short-unique-random-string
     alphabet = string.ascii_lowercase + string.digits
-    return ''.join(random.choices(alphabet, k=8))
+    return ''.join(random.choices(alphabet, k=length))
 
 def generate_random_seed() -> int:
     return random.randint(-sys.maxsize - 1, sys.maxsize)
@@ -118,3 +118,37 @@ def switch_to_device(device: str):
     # if id provided
     if device[4:]:
         cupy.cuda.Device(int(device[4:])).use()
+
+# computes required padding before, after and new volume dimensions after transformation
+def compute_post_transform_dimensions(shape: Tuple[int, int, int], transform_m: np.ndarray) \
+        -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+
+    # constructing volume bbox vertices matrix
+    a, b, c = shape # not using xyz to avoid confusion with axes
+    boundaries = [[0, a, 0, a, 0, a, 0, a],
+                  [0, 0, b, b, 0, 0, b, b],
+                  [0, 0, 0, 0, c, c, c, c],
+                  [1, 1, 1, 1, 1, 1, 1, 1]]
+
+    # inverting transformation matrix to map from output to input
+    try:
+        inv_transform_m = np.linalg.inv(transform_m)
+    except np.linalg.LinAlgError as e:
+        print('Something went wrong. Transform matrix should have been affine but still couldnt inverse...')
+        raise e
+
+    # applying the matrix to get transformed coordinates
+    new_boundaries = np.round(inv_transform_m @ boundaries).astype(int)
+
+    # calculating how much to pad before volume
+    pad_before = np.min(new_boundaries * (new_boundaries < 0), axis=1) * -1
+
+    # calculating how much to pad after volume
+    dims = np.asarray(shape + (1, ))
+    extends_dims = np.tile(np.vstack(dims), len(boundaries[0]))
+    extends_after = (new_boundaries - extends_dims) * (new_boundaries > extends_dims)
+    pad_after = np.max(extends_after, axis=1)
+
+    new_dims = pad_before + dims + pad_after
+
+    return pad_before[:3], pad_after[:3], new_dims[:3]
