@@ -4,8 +4,8 @@ from scipy.ndimage import affine_transform
 from typing import Union, Tuple
 from pathlib import Path
 
+import voltools.utils as utils
 from .utils import scale_matrix, shear_matrix, rotation_matrix, translation_matrix, transform_matrix
-import utils
 
 
 _INTERPOLATIONS = {
@@ -217,6 +217,24 @@ def affine(volume: np.ndarray,
 
     else:
         raise ValueError(f'No instructions for {device}.')
+
+
+def oob_affine(volume: np.ndarray,
+               transform_m: np.ndarray,
+               interpolation: str = 'linear',
+               reshape: bool = False,
+               profile: bool = False,
+               output = None,
+               device: str = 'cpu'):
+
+    # oob affine is needed only for gpu
+    if device == 'cpu':
+        return affine(volume, transform_m, interpolation, reshape, profile, output, device)
+
+    # compute how big the volume will be after the transform
+    pad_before, pad_after, new_dims = utils.compute_post_transform_dimensions(volume.shape, transform_m)
+    memory_required = np.product(new_dims) * volume.itemsize * 2.1
+    # available_memory =
 
 def _get_transform_kernel(interpolation: str = 'linear'):
 
