@@ -118,7 +118,7 @@ def transform_matrix(scale: Union[Tuple[float, float, float], np.ndarray] = None
     """
     Returns composed transformation matrix according to the passed arguments.
     Transformation order: scale, shear, rotation, translation
-    If center is passed, the transformation is done around the center (shape/2)
+    If center is passed, the transformation is done around the center (shape/2),
     and the transformation order is: pre-translation, scale, shear, rotation, post-translation, translation
     """
 
