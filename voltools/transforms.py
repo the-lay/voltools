@@ -269,16 +269,16 @@ def _get_transform_kernel(interpolation: str = 'linear'):
                 unsigned n = dims[0].x * dims[0].y * dims[0].z;
                 
                 for (i = cta_start + tid; i < n; i += total_threads) {{
-                    int z = get_x_idx(i, dims) + .5f;
-                    int y = get_y_idx(i, dims) + .5f;
-                    int x = get_z_idx(i, dims) + .5f;
+                    int z = get_x_idx(i, dims);
+                    int y = get_y_idx(i, dims);
+                    int x = get_z_idx(i, dims);
                     
                     float4 voxf = make_float4((float)x, (float)y, (float)z, 1.0f);
                     
                     float3 ndx;
-                    ndx.z = dot(voxf, xform[0]);
-                    ndx.y = dot(voxf, xform[1]);
-                    ndx.x = dot(voxf, xform[2]);
+                    ndx.z = dot(voxf, xform[0]) + .5f;
+                    ndx.y = dot(voxf, xform[1]) + .5f;
+                    ndx.x = dot(voxf, xform[2]) + .5f;
                     
                     if (ndx.x < 0 || ndx.y < 0 || ndx.z < 0 || ndx.x >= dims[0].z || ndx.y >= dims[0].y || ndx.z >= dims[0].x) {{
                         continue;
