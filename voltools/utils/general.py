@@ -9,26 +9,6 @@ try:
 except ImportError:
     pass
 
-def second_to_h_m_s(time: int) -> (int, int, int):
-    # https://github.com/pytorch/ignite/blob/master/ignite/_utils.py
-    mins, secs = divmod(time, 60)
-    hours, mins = divmod(mins, 60)
-    return hours, mins, secs
-
-def generate_random_id(length: int = 8) -> str:
-    # https://stackoverflow.com/questions/13484726/safe-enough-8-character-short-unique-random-string
-    alphabet = string.ascii_lowercase + string.digits
-    return ''.join(random.choices(alphabet, k=length))
-
-def generate_random_seed() -> int:
-    return random.randint(-sys.maxsize - 1, sys.maxsize)
-
-def readable_size(file_size: int) -> str:
-    for unit in ['', 'K', 'M', 'B']:
-        if file_size < 1000:
-            break
-        file_size /= 1000
-    return f'{file_size:.3f}{unit}'
 
 def compute_prefilter_workgroup_dims(shape: Tuple[int, int, int]) -> Tuple[Tuple, Tuple]:
     def _pow_two_divider(n):
@@ -56,12 +36,14 @@ def compute_prefilter_workgroup_dims(shape: Tuple[int, int, int]) -> Tuple[Tuple
 
     return dim_grid, dim_blocks
 
+
 def compute_pervoxel_workgroup_dims(shape: Tuple[int, int, int]) -> Tuple[Tuple, Tuple]:
     dim_grid = (shape[0] // 8 + 1 * (shape[0] % 8 != 0),
                 shape[1] // 8 + 1 * (shape[1] % 8 != 0),
                 shape[2] // 8 + 1 * (shape[2] % 8 != 0))
     dim_blocks = (8, 8, 8)
     return dim_grid, dim_blocks
+
 
 # @cupy.memoize()
 def compute_elementwise_launch_dims(shape: Tuple[int, int, int]) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
@@ -88,6 +70,7 @@ def compute_elementwise_launch_dims(shape: Tuple[int, int, int]) -> Tuple[Tuple[
 
     return (block_count, 1, 1), (threads_per_block, 1, 1)
 
+
 def get_available_devices():
 
     available_devices = ['cpu']
@@ -112,12 +95,14 @@ def get_available_devices():
 
     return available_devices
 
+
 # parses device string and switches cupy to specific id
 def switch_to_device(device: str):
 
     # if id provided
     if device[4:]:
         cupy.cuda.Device(int(device[4:])).use()
+
 
 # computes required padding before, after and new volume dimensions after transformation
 def compute_post_transform_dimensions(shape: Tuple[int, int, int], transform_m: np.ndarray) \

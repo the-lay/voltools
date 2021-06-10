@@ -35,7 +35,7 @@ def transform(volume: np.ndarray,
               output = None, device: str = 'cpu'):
 
     if center is None:
-        center = np.divide(volume.shape, 2, dtype=np.float32)
+        center = np.divide(np.subtract(volume.shape, 1), 2, dtype=np.float32)
 
     # passing just one float is uniform scaling
     if isinstance(scale, float):
@@ -269,11 +269,11 @@ def _get_transform_kernel(interpolation: str = 'linear'):
                 unsigned n = dims[0].x * dims[0].y * dims[0].z;
                 
                 for (i = cta_start + tid; i < n; i += total_threads) {{
-                    int z = get_x_idx(i, dims);
-                    int y = get_y_idx(i, dims);
-                    int x = get_z_idx(i, dims);
+                    int z = get_x_idx(i, dims) + .5f;
+                    int y = get_y_idx(i, dims) + .5f;
+                    int x = get_z_idx(i, dims) + .5f;
                     
-                    float4 voxf = make_float4(((float)x) + .5f, ((float)y) + .5f, ((float)z) + .5f, 1.0f);
+                    float4 voxf = make_float4((float)x, (float)y, (float)z, 1.0f);
                     
                     float3 ndx;
                     ndx.z = dot(voxf, xform[0]);
