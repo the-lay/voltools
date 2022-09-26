@@ -75,15 +75,15 @@ def get_available_devices():
 
     available_devices = ['cpu']
 
-    # get all available gpus
-    gpu_ids = GPUtil.getAvailable()
-
     # check if cupy is installed
     try:
         import cupy
 
         # add auto gpu
         available_devices.append('gpu')
+
+        # get all available gpus
+        gpu_ids = GPUtil.getAvailable()
 
         # add gpus to list of available devices
         for i in gpu_ids:
