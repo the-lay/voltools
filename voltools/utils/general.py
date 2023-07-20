@@ -1,6 +1,3 @@
-import string
-import random
-import sys
 import numpy as np
 from typing import Tuple
 import GPUtil
@@ -37,15 +34,6 @@ def compute_prefilter_workgroup_dims(shape: Tuple[int, int, int]) -> Tuple[Tuple
     return dim_grid, dim_blocks
 
 
-def compute_pervoxel_workgroup_dims(shape: Tuple[int, int, int]) -> Tuple[Tuple, Tuple]:
-    dim_grid = (shape[0] // 8 + 1 * (shape[0] % 8 != 0),
-                shape[1] // 8 + 1 * (shape[1] % 8 != 0),
-                shape[2] // 8 + 1 * (shape[2] % 8 != 0))
-    dim_blocks = (8, 8, 8)
-    return dim_grid, dim_blocks
-
-
-# @cupy.memoize()
 def compute_elementwise_launch_dims(shape: Tuple[int, int, int]) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
     device = cupy.cuda.device.Device()
     min_threads = device.attributes['WarpSize']
@@ -109,7 +97,7 @@ def compute_post_transform_dimensions(shape: Tuple[int, int, int], transform_m: 
         -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 
     # constructing volume bbox vertices matrix
-    a, b, c = shape # not using xyz to avoid confusion with axes
+    a, b, c = shape  # not using xyz to avoid confusion with axes
     boundaries = [[0, a, 0, a, 0, a, 0, a],
                   [0, 0, b, b, 0, 0, b, b],
                   [0, 0, 0, 0, c, c, c, c],

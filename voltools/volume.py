@@ -9,6 +9,7 @@ try:
 except ImportError:
     pass
 
+
 class StaticVolume:
 
     def __init__(self, data: np.ndarray, interpolation: str = 'linear', device: str = 'gpu'):
@@ -96,7 +97,8 @@ class StaticVolume:
                   rotation_units: str = 'deg', rotation_order: str = 'rzxz',
                   translation: Union[Tuple[float, float, float], np.ndarray] = None,
                   center: Union[Tuple[float, float, float], np.ndarray] = None,
-                  profile: bool = False, output = None) -> Union[np.ndarray, None]:
+                  profile: bool = False,
+                  output=None) -> Union[np.ndarray, None]:
 
         if center is None:
             center = np.divide(np.subtract(self.shape, 1), 2, dtype=np.float32)
@@ -113,14 +115,16 @@ class StaticVolume:
 
     def translate(self,
                   translation: Tuple[float, float, float],
-                  profile: bool = False, output = None) -> Union[np.ndarray, None]:
+                  profile: bool = False,
+                  output=None) -> Union[np.ndarray, None]:
 
         m = translation_matrix(translation)
         return self.affine(m, profile, output)
 
     def shear(self,
               coefficients: Union[float, Tuple[float, float, float]],
-              profile: bool = False, output = None) -> Union[np.ndarray, None]:
+              profile: bool = False,
+              output=None) -> Union[np.ndarray, None]:
 
         # passing just one float is uniform scaling
         if isinstance(coefficients, float):
@@ -131,7 +135,8 @@ class StaticVolume:
 
     def scale(self,
               coefficients: Union[float, Tuple[float, float, float]],
-              profile: bool = False, output = None) -> Union[np.ndarray, None]:
+              profile: bool = False,
+              output=None) -> Union[np.ndarray, None]:
 
         # passing just one float is uniform scaling
         if isinstance(coefficients, float):
@@ -144,7 +149,8 @@ class StaticVolume:
                rotation: Tuple[float, float, float],
                rotation_units: str = 'deg',
                rotation_order: str = 'rzxz',
-               profile: bool = False, output = None) -> Union[np.ndarray, None]:
+               profile: bool = False,
+               output=None) -> Union[np.ndarray, None]:
 
         m = rotation_matrix(rotation=rotation, rotation_units=rotation_units, rotation_order=rotation_order)
         return self.affine(m, profile, output)

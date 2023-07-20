@@ -32,7 +32,8 @@ def transform(volume: np.ndarray,
               interpolation: str = 'linear',
               reshape: bool = False,
               profile: bool = False,
-              output = None, device: str = 'cpu'):
+              output=None,
+              device: str = 'cpu'):
 
     if center is None:
         center = np.divide(np.subtract(volume.shape, 1), 2, dtype=np.float32)
@@ -52,7 +53,8 @@ def translate(volume: np.ndarray,
               interpolation: str = 'linear',
               reshape: bool = False,
               profile: bool = False,
-              output = None, device: str = 'cpu'):
+              output=None,
+              device: str = 'cpu'):
 
     m = translation_matrix(translation)
     return affine(volume, m, interpolation, reshape, profile, output, device)
@@ -63,7 +65,8 @@ def shear(volume: np.ndarray,
           interpolation: str = 'linear',
           reshape: bool = False,
           profile: bool = False,
-          output = None, device: str = 'cpu'):
+          output=None,
+          device: str = 'cpu'):
 
     # passing just one float is uniform scaling
     if isinstance(coefficients, float):
@@ -78,7 +81,8 @@ def scale(volume: np.ndarray,
           interpolation: str = 'linear',
           reshape: bool = False,
           profile: bool = False,
-          output = None, device: str = 'cpu'):
+          output=None,
+          device: str = 'cpu'):
 
     # passing just one float is uniform scaling
     if isinstance(coefficients, float):
@@ -95,7 +99,8 @@ def rotate(volume: np.ndarray,
            interpolation: str = 'linear',
            reshape: bool = False,
            profile: bool = False,
-           output = None, device: str = 'cpu'):
+           output=None,
+           device: str = 'cpu'):
 
     m = rotation_matrix(rotation=rotation, rotation_units=rotation_units, rotation_order=rotation_order)
     return affine(volume, m, interpolation, reshape, profile, output, device)
@@ -106,7 +111,7 @@ def affine(volume: np.ndarray,
            interpolation: str = 'linear',
            reshape: bool = False,
            profile: bool = False,
-           output = None,
+           output=None,
            device: str = 'cpu'):
 
     if device not in AVAILABLE_DEVICES:
@@ -139,7 +144,12 @@ def affine(volume: np.ndarray,
             output_shape = volume.shape
 
         # run affine transformation
-        output_vol = affine_transform(volume, transform_m, output_shape=output_shape, output=output, order=order, prefilter=prefilter)
+        output_vol = affine_transform(volume,
+                                      transform_m,
+                                      output_shape=output_shape,
+                                      output=output,
+                                      order=order,
+                                      prefilter=prefilter)
 
         if profile:
             t_end = time.time()
@@ -179,7 +189,7 @@ def affine(volume: np.ndarray,
                                                  cp.cuda.runtime.cudaAddressModeBorder),
                                                 cp.cuda.runtime.cudaFilterModeLinear,
                                                 cp.cuda.runtime.cudaReadModeElementType)
-        texobj = cp.cuda.texture.TextureObject(res, tex)
+        tex_obj = cp.cuda.texture.TextureObject(res, tex)
 
         # prefilter if required and upload to texture
         if interpolation.startswith('filt_bspline'):
@@ -199,7 +209,7 @@ def affine(volume: np.ndarray,
         else:
             volume = output
 
-        kernel(dim_grid, dim_blocks, (volume, texobj, xform, dims))
+        kernel(dim_grid, dim_blocks, (volume, tex_obj, xform, dims))
 
         if profile:
             t_end = stream.record()
@@ -209,32 +219,15 @@ def affine(volume: np.ndarray,
             print(f'transform finished in {time_took:.3f}ms')
 
         if output is None:
-            del texobj, xform, dims
+            del tex_obj, xform, dims
             return volume.get()
         else:
-            del texobj, xform, dims
+            del tex_obj, xform, dims
             return None
 
     else:
         raise ValueError(f'No instructions for {device}.')
 
-
-def oob_affine(volume: np.ndarray,
-               transform_m: np.ndarray,
-               interpolation: str = 'linear',
-               reshape: bool = False,
-               profile: bool = False,
-               output = None,
-               device: str = 'cpu'):
-
-    # oob affine is needed only for gpu
-    if device == 'cpu':
-        return affine(volume, transform_m, interpolation, reshape, profile, output, device)
-
-    # compute how big the volume will be after the transform
-    pad_before, pad_after, new_dims = utils.compute_post_transform_dimensions(volume.shape, transform_m)
-    memory_required = np.product(new_dims) * volume.itemsize * 2.1
-    # available_memory =
 
 def _get_transform_kernel(interpolation: str = 'linear'):
 
@@ -292,6 +285,7 @@ def _get_transform_kernel(interpolation: str = 'linear'):
     incl_path = str((Path(__file__).parent / 'kernels').absolute())
     kernel = cp.RawKernel(code=code, name='transform', options=('-I', incl_path))
     return kernel
+
 
 def _bspline_prefilter(volume):
 
