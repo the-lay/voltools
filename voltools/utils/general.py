@@ -1,6 +1,5 @@
 import numpy as np
 from typing import Tuple
-import GPUtil
 try:
     import cupy
 except ImportError:
@@ -70,11 +69,8 @@ def get_available_devices():
         # add auto gpu
         available_devices.append('gpu')
 
-        # get all available gpus
-        gpu_ids = GPUtil.getAvailable()
-
-        # add gpus to list of available devices
-        for i in gpu_ids:
+        # make list of possible devices
+        for i in range(cupy.cuda.runtime.getDeviceCount()):
             available_devices.append(f'gpu:{i}')
 
     except ImportError:
