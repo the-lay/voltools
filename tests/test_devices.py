@@ -69,7 +69,7 @@ fig, ax = plt.subplots(2, 3, sharex=True, sharey=True)
 
 for n, v in enumerate(st_volumes):
     print(f'Test case: {v.interpolation} / {v.device}')
-    tf = v.transform(scale=scale, rotation=rotation, profile=True)  # TODO ISSUE HERE
+    tf = v.transform(scale=scale, rotation=rotation, profile=True)
     i, j = int(n / 3), n % 3
     ax[i][j].set_title(f'{v.interpolation} / {v.device}')
     ax[i][j].imshow(tf[size[0] // 2])
