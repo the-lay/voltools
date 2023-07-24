@@ -11,7 +11,9 @@ except ImportError:
 
 
 class StaticVolume:
-
+    """
+    For StaticVolume transforms the boolean reshape cannot be given as an argument.
+    """
     def __init__(self, data: np.ndarray, interpolation: str = 'linear', device: str = 'gpu'):
 
         if data.ndim != 3:
@@ -89,7 +91,14 @@ class StaticVolume:
                 return None
 
         elif self.device == 'cpu':
-            return affine(self.data, transform_m, self.interpolation, profile, output, self.device)
+            return affine(
+                self.data,
+                transform_m,
+                interpolation=self.interpolation,
+                profile=profile,
+                output=output,
+                device=self.device
+            )
 
     def transform(self, scale: Union[float, Tuple[float, float, float], np.ndarray] = None,
                   shear: Union[float, Tuple[float, float, float], np.ndarray] = None,
